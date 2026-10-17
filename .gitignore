@@ -1,0 +1,9 @@
+node_modules
+dist
+release
+.env
+data/
+.claude/
+# The installed desktop app, if it was installed inside this folder
+/Agent Dashboard/
+/Alfred for Agents/
