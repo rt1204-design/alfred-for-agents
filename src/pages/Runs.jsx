@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Markdown from '../components/Markdown.jsx';
 import { AgentAvatar, Empty, Icon, Loading, Status } from '../components/ui.jsx';
-import { fmtAgo, fmtCost, fmtTokens, totalTokens } from '../format.js';
+import { fmtAgo, fmtCost, fmtTokens, fmtWhen, totalTokens } from '../format.js';
 
 export default function Runs({ runs, loadRuns, runId, agents }) {
   // Refresh the list while anything is running so statuses stay current.
@@ -13,44 +13,49 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
     return () => clearInterval(t);
   }, [anyRunning, loadRuns]);
 
-  const selected = runId || runs[0]?.id;
+  // One run at a time, full width; the list is its own page.
+  if (runId) {
+    return (
+      <>
+        <a href="#/runs" className="back-link"><Icon name="back" /> All runs</a>
+        <RunView key={runId} id={runId} agents={agents} onChange={loadRuns} />
+      </>
+    );
+  }
 
   return (
     <>
       <div className="page-head">
         <div>
-          <div className="eyebrow">Section iv<span className="sep" />Errands</div>
           <h1>Runs</h1>
-          <p>Every task you’ve given an agent, followed live as it works.</p>
+          <p>Every task you’ve given an agent. Open one to follow it live.</p>
         </div>
         <div className="spacer" />
         <a className="btn primary" href="#/agents"><Icon name="plus" /> New run</a>
       </div>
       {runs.length === 0 ? (
-        <div className="card">
-          <Empty art="scene" title="No errands yet">
-            <a href="#/agents">Choose an agent</a> and give it a task. You can follow its thinking and tool calls here as it works.
-          </Empty>
-        </div>
+        <Empty art="scene" title="No runs yet">
+          <a href="#/agents">Choose an agent</a> and give it a task. You can follow its thinking and tool calls here as it works.
+        </Empty>
       ) : (
-        <div className="run-layout">
-          <nav className="card run-list" aria-label="Runs">
-            <div className="run-list-head">{runs.length} {runs.length === 1 ? 'run' : 'runs'}</div>
-            {runs.map((r) => (
-              <a key={r.id} href={`#/runs/${r.id}`} className={`run-item ${r.id === selected ? 'active' : ''}`} aria-current={r.id === selected ? 'page' : undefined}>
+        <ul className="entries">
+          {runs.map((r) => (
+            <li key={r.id}>
+              <a className="entry with-avatar" href={`#/runs/${r.id}`}>
+                <div className="entry-when">{fmtWhen(r.createdAt)}</div>
                 <AgentAvatar agent={r} agents={agents} size="sm" />
-                <div style={{ minWidth: 0 }}>
+                <div>
                   <div className="cell-title clamp">{r.preview}</div>
-                  <div className="cell-sub">
-                    <Status status={r.status} />
-                    <span>{r.agentName} · {fmtAgo(r.createdAt)}</span>
-                  </div>
+                  <div className="cell-sub">{r.agentName} · {fmtAgo(r.createdAt)}</div>
+                </div>
+                <div className="entry-figs">
+                  <Status status={r.status} />
+                  <div className="cell-sub">{fmtCost(r.cost)} · {fmtTokens(totalTokens(r.usage))} tok</div>
                 </div>
               </a>
-            ))}
-          </nav>
-          {selected && <RunView key={selected} id={selected} agents={agents} onChange={loadRuns} />}
-        </div>
+            </li>
+          ))}
+        </ul>
       )}
     </>
   );
@@ -120,7 +125,7 @@ function RunView({ id, agents, onChange }) {
     window.location.hash = '#/runs';
   }
 
-  if (!run) return <div className="card">{error ? <Empty title={error} /> : <Loading />}</div>;
+  if (!run) return error ? <Empty title={error} /> : <Loading />;
   const running = run.status === 'running';
   const agent = <AgentAvatar agent={run} agents={agents} />;
   const turns = groupTurns(run.messages);
@@ -141,7 +146,7 @@ function RunView({ id, agents, onChange }) {
   }
 
   return (
-    <section className="card run-sheet" aria-label={`Run by ${run.agentName}`}>
+    <section aria-label={`Run by ${run.agentName}`}>
       <div className="run-top">
         <AgentAvatar agent={run} agents={agents} size="lg" />
         <div className="who">

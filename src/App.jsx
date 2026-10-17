@@ -65,12 +65,11 @@ export default function App() {
   else page = <Overview {...ctx} />;
 
   const running = runs.filter((r) => r.status === 'running').length;
-  // Numbered like the sections of a ledger.
   const nav = [
-    { id: 'overview', num: 'i', label: 'Overview', href: '#/' },
-    { id: 'sessions', num: 'ii', label: 'Claude Code', href: '#/sessions', count: summary?.sessions.length },
-    { id: 'agents', num: 'iii', label: 'Agents', href: '#/agents', count: agents.length },
-    { id: 'runs', num: 'iv', label: 'Runs', href: '#/runs', count: running ? `${running} live` : runs.length, live: running > 0 },
+    { id: 'overview', label: 'Overview', href: '#/' },
+    { id: 'sessions', label: 'Claude Code', href: '#/sessions', count: summary?.sessions.length },
+    { id: 'agents', label: 'Agents', href: '#/agents', count: agents.length },
+    { id: 'runs', label: 'Runs', href: '#/runs', count: running ? `${running} live` : runs.length, live: running > 0 },
   ];
   const cli = health?.cli;
 
@@ -87,7 +86,6 @@ export default function App() {
         <nav aria-label="Sections">
           {nav.map((n) => (
             <a key={n.id} href={n.href} className={`nav-link ${section === n.id ? 'active' : ''}`} aria-current={section === n.id ? 'page' : undefined}>
-              <span className="nav-num">{n.num}.</span>
               <span className="nav-label">{n.label}</span>
               {n.count != null && <span className={`nav-count ${n.live ? 'live' : ''}`}>{n.count}</span>}
             </a>
