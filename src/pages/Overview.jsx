@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AgentAvatar, Art, BarChart, Empty, HBars, Icon, Loading, Segmented, Stat, Status } from '../components/ui.jsx';
-import { dayKey, fmtAgo, fmtCost, fmtNum, fmtTokens, totalTokens } from '../format.js';
+import { dayKey, fmtAgo, fmtCost, fmtNum, fmtTokens, fmtWhen, totalTokens } from '../format.js';
 
 const RANGES = [
   { value: 7, label: '7 days' },
@@ -52,13 +52,6 @@ function greeting() {
 }
 
 const plural = (n, one, many = `${one}s`) => `${fmtNum(n)} ${n === 1 ? one : many}`;
-const shortWhen = (ts) => {
-  if (!ts) return '–';
-  const d = new Date(ts);
-  return d.toDateString() === new Date().toDateString()
-    ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-};
 
 export default function Overview({ summary, summaryError, loadingSummary, loadSummary, runs, agents }) {
   const [range, setRange] = useState(30);
@@ -76,27 +69,26 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
   }));
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
+
   return (
     <>
       <section className="hero">
         <div>
-          <div className="eyebrow">{today}<span className="sep" />The day’s account</div>
+          <div className="hero-date">{today}</div>
           <h1>{greeting()}.</h1>
           <p className="hero-lede">
             {!r ? (
-              'I’m reading through your Claude Code logs now.'
+              'Reading your Claude Code logs…'
             ) : r.sessions.length === 0 ? (
-              <>A quiet {range} days: no Claude Code sessions to report.</>
+              <>No Claude Code sessions in the last {range} days.</>
             ) : (
               <>
-                Over the last {range} days you kept <b>{plural(r.sessions.length, 'Claude Code session')}</b>, which
-                got through <b>{fmtTokens(r.tokens)} tokens</b> and <b>{plural(r.toolCalls, 'tool call')}</b>. At API list
-                prices that would come to about <b>{fmtCost(r.cost)}</b>.
+                In the last {range} days you kept <b>{plural(r.sessions.length, 'Claude Code session')}</b>, using{' '}
+                <b>{fmtTokens(r.tokens)} tokens</b> and <b>{plural(r.toolCalls, 'tool call')}</b>, about <b>{fmtCost(r.cost)}</b> at
+                API list prices.
               </>
             )}
-            {agents.length > 0 && (
-              <> Your staff of {agents.length} {agents.length === 1 ? 'agent has' : 'agents have'} handled {plural(runs.length, 'run')}.</>
-            )}
+            {agents.length > 0 && <> Your {agents.length === 1 ? 'agent has' : `${agents.length} agents have`} handled {plural(runs.length, 'run')}.</>}
           </p>
           <div className="hero-controls">
             <Segmented options={RANGES} value={range} onChange={setRange} />
@@ -105,106 +97,102 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
             </button>
           </div>
         </div>
-        <Art name="scene" className="hero-art" />
+        <Art name="bust" className="hero-art" />
       </section>
 
       {summaryError && <div className="alert error"><strong>Couldn't read Claude Code logs:</strong> {summaryError}</div>}
 
       {!r ? (
-        <div className="card"><Loading>Reading the session logs…</Loading></div>
+        <Loading>Reading the session logs…</Loading>
       ) : (
         <div className="stack">
-          <div className="grid kpis">
+          <div className="kpis">
             <Stat label="Sessions" value={fmtNum(r.sessions.length)} note={`active in the last ${range} days`} />
             <Stat label="Est. cost" value={fmtCost(r.cost)} note="at API list prices" />
-            <Stat label="Tokens processed" value={fmtTokens(r.tokens)} note={`across ${plural(r.prompts, 'prompt')}`} />
+            <Stat label="Tokens" value={fmtTokens(r.tokens)} note={`across ${plural(r.prompts, 'prompt')}`} />
             <Stat label="Tool calls" value={fmtNum(r.toolCalls)} note={`${Object.keys(r.tools).length} distinct tools`} />
           </div>
 
-          <div className="grid two">
-            <div className="card">
-              <div className="card-head">
-                <h2>{m.label} per day</h2>
-                <div className="spacer" />
-                <Segmented options={METRICS} value={metric} onChange={setMetric} />
-              </div>
-              <div className="card-body">
-                <BarChart data={chartData} format={(v) => m.fmt(v)} label={`${m.label} per day`} />
-              </div>
+          <section className="card">
+            <div className="card-head">
+              <h2>{m.label} per day</h2>
+              <div className="spacer" />
+              <Segmented options={METRICS} value={metric} onChange={setMetric} />
             </div>
-            <div className="card">
-              <div className="card-head"><h2>Most-used tools</h2><span className="sub">calls</span></div>
-              <div className="card-body">
-                <HBars items={Object.entries(r.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} />
-              </div>
+            <div className="card-body">
+              <BarChart data={chartData} format={(v) => m.fmt(v)} label={`${m.label} per day`} />
             </div>
-          </div>
+          </section>
 
-          <div className="grid halves">
-            <div className="card">
-              <div className="card-head">
-                <h2>Recent sessions</h2>
-                <span className="sub">Claude Code</span>
-                <div className="spacer" />
-                <a href="#/sessions" className="btn link">All sessions →</a>
-              </div>
-              {r.sessions.length === 0 ? (
-                <Empty art="bust" title="Nothing in the book yet">Sessions you run in Claude Code will be entered here.</Empty>
-              ) : (
-                <ul className="entries">
-                  {r.sessions.slice(0, 6).map((s) => (
-                    <li key={s.id}>
-                      <a className="entry" href={`#/sessions/${s.id}`}>
-                        <div className="entry-when">{shortWhen(s.end)}</div>
-                        <div>
-                          <div className="cell-title clamp">{s.title || s.firstPrompt || 'Untitled session'}</div>
-                          <div className="cell-sub">{s.project} · {fmtAgo(s.end)}</div>
-                        </div>
-                        <div className="entry-figs">
-                          <div>{fmtCost(s.cost)}</div>
-                          <div className="cell-sub">{fmtTokens(s.totalTokens)} tok</div>
-                        </div>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          <section className="card">
+            <div className="card-head"><h2>Most-used tools</h2><span className="sub">calls in this range</span></div>
+            <div className="card-body">
+              <HBars items={Object.entries(r.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} />
             </div>
+          </section>
 
-            <div className="card">
-              <div className="card-head">
-                <h2>Agent runs</h2>
-                <span className="sub">{agents.length} agents · {fmtCost(agentCost)} total</span>
-                <div className="spacer" />
-                <a href="#/runs" className="btn link">All runs →</a>
-              </div>
-              {runs.length === 0 ? (
-                <Empty art="robot" title="The staff are idle">
-                  <a href="#/agents">Choose an agent</a> and give it a task.
-                </Empty>
-              ) : (
-                <ul className="entries">
-                  {runs.slice(0, 6).map((x) => (
-                    <li key={x.id}>
-                      <a className="entry" href={`#/runs/${x.id}`}>
-                        <div className="entry-when">{shortWhen(x.createdAt)}</div>
-                        <div>
-                          <div className="cell-title clamp">{x.preview}</div>
-                          <div className="cell-sub row" style={{ gap: 6 }}>
-                            <AgentAvatar agent={x} agents={agents} size="xs" />{x.agentName} · {fmtAgo(x.createdAt)}
-                          </div>
-                        </div>
-                        <div className="entry-figs">
-                          <Status status={x.status} />
-                          <div className="cell-sub">{fmtCost(x.cost)} · {fmtTokens(totalTokens(x.usage))} tok</div>
-                        </div>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          <section className="card">
+            <div className="card-head">
+              <h2>Recent sessions</h2>
+              <span className="sub">Claude Code</span>
+              <div className="spacer" />
+              <a href="#/sessions" className="btn link">All sessions →</a>
             </div>
-          </div>
+            {r.sessions.length === 0 ? (
+              <Empty title="No sessions in this range">Sessions you run in Claude Code show up here.</Empty>
+            ) : (
+              <ul className="entries">
+                {r.sessions.slice(0, 5).map((s) => (
+                  <li key={s.id}>
+                    <a className="entry" href={`#/sessions/${s.id}`}>
+                      <div className="entry-when">{fmtWhen(s.end)}</div>
+                      <div>
+                        <div className="cell-title clamp">{s.title || s.firstPrompt || 'Untitled session'}</div>
+                        <div className="cell-sub">{s.project} · {fmtAgo(s.end)}</div>
+                      </div>
+                      <div className="entry-figs">
+                        <div>{fmtCost(s.cost)}</div>
+                        <div className="cell-sub">{fmtTokens(s.totalTokens)} tok</div>
+                      </div>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <h2>Agent runs</h2>
+              <span className="sub">{plural(agents.length, 'agent')} · {fmtCost(agentCost)} total</span>
+              <div className="spacer" />
+              <a href="#/runs" className="btn link">All runs →</a>
+            </div>
+            {runs.length === 0 ? (
+              <Empty art="robot" title="No runs yet">
+                <a href="#/agents">Choose an agent</a> and give it a task.
+              </Empty>
+            ) : (
+              <ul className="entries">
+                {runs.slice(0, 5).map((x) => (
+                  <li key={x.id}>
+                    <a className="entry with-avatar" href={`#/runs/${x.id}`}>
+                      <div className="entry-when">{fmtWhen(x.createdAt)}</div>
+                      <AgentAvatar agent={x} agents={agents} size="sm" />
+                      <div>
+                        <div className="cell-title clamp">{x.preview}</div>
+                        <div className="cell-sub">{x.agentName} · {fmtAgo(x.createdAt)}</div>
+                      </div>
+                      <div className="entry-figs">
+                        <Status status={x.status} />
+                        <div className="cell-sub">{fmtCost(x.cost)} · {fmtTokens(totalTokens(x.usage))} tok</div>
+                      </div>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       )}
     </>
