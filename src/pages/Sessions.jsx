@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Empty, Icon, Loading } from '../components/ui.jsx';
-import { fmtAgo, fmtCost, fmtDuration, fmtNum, fmtTokens } from '../format.js';
+import { fmtAgo, fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens } from '../format.js';
 
 const SORTS = {
   recent: (a, b) => (b.end || '').localeCompare(a.end || ''),
@@ -60,7 +60,7 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
         {!summary ? (
           <Loading>Reading the session logs…</Loading>
         ) : rows.length === 0 ? (
-          <Empty art={q || project ? undefined : 'bust'} title={q || project ? 'No matching sessions' : 'No sessions yet'}>
+          <Empty title={q || project ? 'No matching sessions' : 'No sessions yet'}>
             {q || project ? 'Try a different search or project.' : 'Claude Code sessions show up here once they’ve written logs.'}
           </Empty>
         ) : (
@@ -95,7 +95,7 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
                     <td className="num">{fmtTokens(s.totalTokens)}</td>
                     <td className="num strong">{fmtCost(s.cost)}</td>
                     <td className="num col-wide">{fmtDuration(s.start, s.end)}</td>
-                    <td className="num">{fmtAgo(s.end)}</td>
+                    <td className="num" title={fmtDate(s.end)}>{fmtAgo(s.end)}</td>
                   </tr>
                 ))}
               </tbody>

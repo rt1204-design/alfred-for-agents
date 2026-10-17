@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { AgentAvatar, Art, BarChart, Empty, HBars, Icon, Loading, Segmented, Stat, Status } from '../components/ui.jsx';
-import { dayKey, fmtAgo, fmtCost, fmtNum, fmtTokens, fmtWhen, totalTokens } from '../format.js';
+import { TeamDiagram } from '../components/Robot.jsx';
+import { AgentAvatar, BarChart, Empty, HBars, Icon, Loading, Segmented, Stat, Status } from '../components/ui.jsx';
+import { dayKey, fmtAgo, fmtCost, fmtDate, fmtNum, fmtTokens, fmtWhen, toolLabel, totalTokens } from '../format.js';
 
 const RANGES = [
   { value: 7, label: '7 days' },
@@ -97,7 +98,7 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
             </button>
           </div>
         </div>
-        <Art name="bust" className="hero-art" />
+        {agents.length > 0 && <TeamDiagram agents={agents} runs={runs} className="hero-art" />}
       </section>
 
       {summaryError && <div className="alert error"><strong>Couldn't read Claude Code logs:</strong> {summaryError}</div>}
@@ -127,7 +128,7 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
           <section className="card">
             <div className="card-head"><h2>Most-used tools</h2><span className="sub">calls in this range</span></div>
             <div className="card-body">
-              <HBars items={Object.entries(r.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} />
+              <HBars items={Object.entries(r.tools).map(([name, value]) => ({ label: toolLabel(name), value })).sort((a, b) => b.value - a.value)} />
             </div>
           </section>
 
@@ -145,7 +146,7 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
                 {r.sessions.slice(0, 5).map((s) => (
                   <li key={s.id}>
                     <a className="entry" href={`#/sessions/${s.id}`}>
-                      <div className="entry-when">{fmtWhen(s.end)}</div>
+                      <div className="entry-when" title={fmtDate(s.end)}>{fmtWhen(s.end)}</div>
                       <div>
                         <div className="cell-title clamp">{s.title || s.firstPrompt || 'Untitled session'}</div>
                         <div className="cell-sub">{s.project} · {fmtAgo(s.end)}</div>
@@ -169,15 +170,16 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
               <a href="#/runs" className="btn link">All runs →</a>
             </div>
             {runs.length === 0 ? (
-              <Empty art="robot" title="No runs yet">
-                <a href="#/agents">Choose an agent</a> and give it a task.
+              <Empty title="No runs yet">
+                Runs appear here once you give an agent a task.
+                <div style={{ marginTop: 12 }}><a className="btn sm" href="#/agents">Give an agent a task</a></div>
               </Empty>
             ) : (
               <ul className="entries">
                 {runs.slice(0, 5).map((x) => (
                   <li key={x.id}>
                     <a className="entry with-avatar" href={`#/runs/${x.id}`}>
-                      <div className="entry-when">{fmtWhen(x.createdAt)}</div>
+                      <div className="entry-when" title={fmtDate(x.createdAt)}>{fmtWhen(x.createdAt)}</div>
                       <AgentAvatar agent={x} agents={agents} size="sm" />
                       <div>
                         <div className="cell-title clamp">{x.preview}</div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Markdown from '../components/Markdown.jsx';
 import { AgentAvatar, Empty, Icon, Loading, Status } from '../components/ui.jsx';
-import { fmtAgo, fmtCost, fmtTokens, fmtWhen, totalTokens } from '../format.js';
+import { fmtAgo, fmtCost, fmtDate, fmtTokens, fmtWhen, totalTokens } from '../format.js';
 
 export default function Runs({ runs, loadRuns, runId, agents }) {
   // Refresh the list while anything is running so statuses stay current.
@@ -34,15 +34,16 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
         <a className="btn primary" href="#/agents"><Icon name="plus" /> New run</a>
       </div>
       {runs.length === 0 ? (
-        <Empty art="scene" title="No runs yet">
-          <a href="#/agents">Choose an agent</a> and give it a task. You can follow its thinking and tool calls here as it works.
+        <Empty robot title="No runs yet">
+          Give an agent a task and follow its thinking and tool calls here as it works.
+          <div style={{ marginTop: 12 }}><a className="btn sm" href="#/agents">Give an agent a task</a></div>
         </Empty>
       ) : (
         <ul className="entries">
           {runs.map((r) => (
             <li key={r.id}>
               <a className="entry with-avatar" href={`#/runs/${r.id}`}>
-                <div className="entry-when">{fmtWhen(r.createdAt)}</div>
+                <div className="entry-when" title={fmtDate(r.createdAt)}>{fmtWhen(r.createdAt)}</div>
                 <AgentAvatar agent={r} agents={agents} size="sm" />
                 <div>
                   <div className="cell-title clamp">{r.preview}</div>
@@ -135,13 +136,16 @@ function RunView({ id, agents, onChange }) {
     if (!last || last.role !== 'agent') turns.push((last = { role: 'agent', parts: [] }));
     last.live = true;
     const blocks = run.live?.content.filter(Boolean) || [];
-    blocks.forEach((b, i) => last.parts.push(<Block key={`live-${i}`} b={b} live={i === blocks.length - 1} />));
-    if (running && !blocks.length) {
-      last.parts.push(
-        <div key="attending" className="attending">
-          <span className="dots"><span /><span /><span /></span> On it…
-        </div>,
-      );
+    const shown = blocks.map((b, i) => part(b, <Block key={`live-${i}`} b={b} live={i === blocks.length - 1} />)).filter(Boolean);
+    last.parts.push(...shown);
+    if (running && !shown.length) {
+      last.parts.push({
+        el: (
+          <div key="attending" className="attending">
+            <span className="dots"><span /><span /><span /></span> On it…
+          </div>
+        ),
+      });
     }
   }
 
@@ -180,7 +184,7 @@ function RunView({ id, agents, onChange }) {
           ) : (
             <div key={i} className="turn turn-agent">
               <div className="turn-who">{agent}</div>
-              <div className="turn-body" aria-live={t.live ? 'polite' : undefined}>{t.parts}</div>
+              <div className="turn-body" aria-live={t.live ? 'polite' : undefined}>{renderParts(t.parts, t.live)}</div>
             </div>
           )
         ))}
@@ -221,10 +225,56 @@ function groupTurns(messages) {
     }
     let last = turns.at(-1);
     if (!last || last.role !== 'agent') turns.push((last = { role: 'agent', parts: [] }));
-    if (m.role === 'assistant') m.content.forEach((b, j) => last.parts.push(<Block key={`${i}-${j}`} b={b} />));
-    else m.content.forEach((b, j) => last.parts.push(<ToolResult key={`${i}-${j}`} b={b} />));
+    if (m.role === 'assistant') m.content.forEach((b, j) => last.parts.push(part(b, <Block key={`${i}-${j}`} b={b} />)));
+    else m.content.forEach((b, j) => last.parts.push(part(b, <ToolResult key={`${i}-${j}`} b={b} />)));
   });
   return turns;
+}
+
+const CALLS = new Set(['tool_use', 'server_tool_use']);
+const RESULTS = new Set(['tool_result', 'web_search_tool_result', 'web_fetch_tool_result']);
+
+// Tag a rendered block so runs of tool calls can be folded together. Blocks
+// that render nothing (empty text or thinking, unknown types) are dropped so
+// they don't split a run of tool calls.
+function part(b, el) {
+  const step = CALLS.has(b.type) || RESULTS.has(b.type);
+  const visible = step || (b.type === 'text' && b.text?.trim()) || (b.type === 'thinking' && b.thinking);
+  if (!visible) return null;
+  const failed = (b.type === 'tool_result' && b.is_error) || (RESULTS.has(b.type) && String(b.content?.type || b.content?.error_code || '').includes('error'));
+  return { el, step, call: CALLS.has(b.type), failed };
+}
+
+// Consecutive tool calls and results fold into one "N tool calls" row, so the
+// agent's prose reads straight through. The row is open while the agent is
+// still working on it; prose is never folded away.
+function renderParts(allParts, live) {
+  const parts = allParts.filter(Boolean);
+  const out = [];
+  for (let i = 0; i < parts.length; ) {
+    if (!parts[i].step) {
+      out.push(parts[i++].el);
+      continue;
+    }
+    const group = [];
+    while (i < parts.length && parts[i].step) group.push(parts[i++]);
+    if (group.length === 1) {
+      out.push(group[0].el);
+      continue;
+    }
+    const calls = group.filter((p) => p.call).length || group.length;
+    const failed = group.filter((p) => p.failed).length;
+    out.push(
+      <details key={`steps-${i}`} className="steps" open={live && i === parts.length}>
+        <summary>
+          {calls} tool {calls === 1 ? 'call' : 'calls'}
+          {failed > 0 && <span className="steps-failed"> · {failed} failed</span>}
+        </summary>
+        <div className="steps-body">{group.map((p) => p.el)}</div>
+      </details>,
+    );
+  }
+  return out;
 }
 
 function ToolResult({ b }) {

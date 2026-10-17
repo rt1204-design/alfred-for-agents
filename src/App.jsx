@@ -94,7 +94,6 @@ export default function App() {
         <div className="sidebar-foot">
           {health && (
             <>
-              <div className="hand">{cli?.loggedIn ? 'At your service.' : 'Not quite ready, I’m afraid.'}</div>
               <div className={`service ${cli?.loggedIn ? 'on' : 'off'}`}>
                 <span className="dot" />
                 {cli?.loggedIn
