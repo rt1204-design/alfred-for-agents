@@ -53,13 +53,23 @@ Cost, tokens, prompts and tool calls per day for the last 7, 30 or 90 days. See 
 ### 🪟 A real desktop app
 Alfred gets its own window and a tray icon. When an agent finishes in the background, you get a Windows notification. Alfred can also start with Windows.
 
+### 🎩 A butler, not a dashboard
+The design is a butler's service ledger, drawn from the hand-made Alfred illustration: Caslon type, ruled pages, a robot portrait for each agent on your staff, and Day and Evening themes.
+
 </td>
 </tr>
 </table>
 
-![A Researcher agent run: web searches and page reads stream in, followed by a sourced answer](docs/screenshots/run.png)
+![A Researcher agent run: web searches and page reads stream in on a thread, followed by a sourced answer](docs/screenshots/run.png)
 
-![The Agents page with the three starter agents](docs/screenshots/agents.png)
+![The Agents page: three starter agents, each with its own robot portrait](docs/screenshots/agents.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/overview-day.png" alt="The Overview in the Day theme" /><p align="center"><sub>Day</sub></p></td>
+<td width="50%"><img src="docs/screenshots/overview.png" alt="The Overview in the Evening theme" /><p align="center"><sub>Evening</sub></p></td>
+</tr>
+</table>
 
 ## Getting started
 
@@ -113,7 +123,7 @@ On Windows you can also double-click **`Start Dashboard.bat`**, which installs d
 
 ### Run your first task
 
-1. Go to **Agents** and click **Run** on *Quick helper*.
+1. Go to **Agents** and click **Give a task** on *Quick helper*.
 2. Type a task, for example *"Explain what a monad is in two sentences"*, and press **Start run**.
 3. Alfred opens the run and streams the answer. Send a follow-up from the box at the bottom.
 
@@ -200,8 +210,11 @@ alfred-for-agents/
 │   └── pricing.js         Per-model prices for cost estimates
 ├── src/                   React UI (Vite)
 ├── assets/alfred.png      The Alfred illustration
+├── public/art/            Line-art pieces cut from the illustration
 ├── build/                 App and tray icons (made by `npm run icon`)
-└── scripts/make-icon.mjs  Builds the icons from Alfred's head
+└── scripts/
+    ├── make-icon.mjs      Builds the icons from Alfred's head
+    └── make-art.mjs       Cuts the illustration into the UI's art pieces
 ```
 
 ## FAQ
@@ -238,7 +251,7 @@ No. It's an estimate at API list prices, worked out from the token counts in you
 
 ## Contributing
 
-Issues and pull requests are welcome. To work on Alfred, run `npm run dev` for the browser version with live reload, or `npm run app` for the desktop app. If you change the drawing, `npm run icon` rebuilds every icon from `assets/alfred.png`.
+Issues and pull requests are welcome. To work on Alfred, run `npm run dev` for the browser version with live reload, or `npm run app` for the desktop app. If you change the drawing, `npm run icon` rebuilds every icon and `node scripts/make-art.mjs` re-cuts the UI art from `assets/alfred.png`.
 
 ## License
 
