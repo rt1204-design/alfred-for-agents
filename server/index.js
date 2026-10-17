@@ -37,6 +37,32 @@ app.use((req, res, next) => {
   next();
 });
 
+// Browser-side defences for the pages this server sends. Google Fonts is the
+// only outside origin allowed (for web fonts); everything else is same-origin.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+app.use((_req, res, next) => {
+  res.set({
+    'Content-Security-Policy': CSP,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 
 const wrap = (fn) => (req, res) =>
