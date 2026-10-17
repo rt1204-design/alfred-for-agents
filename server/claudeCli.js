@@ -6,9 +6,11 @@ import path from 'node:path';
 function onPath(name) {
   const exts = process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''];
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    // Relative entries (".") would resolve against the working folder, where a planted claude.exe could sit.
+    if (!dir || !path.isAbsolute(dir)) continue;
     for (const ext of exts) {
       const p = path.join(dir, name + ext);
-      if (dir && fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
     }
   }
   return null;

@@ -36,6 +36,15 @@ let toldAboutTray = false;
 
 const isLocal = (url) => url.startsWith(`http://127.0.0.1:${port}/`);
 
+function openWebLink(url) {
+  try {
+    const { protocol } = new URL(url);
+    if (protocol === 'https:' || protocol === 'http:') shell.openExternal(url);
+  } catch {
+    /* not a URL */
+  }
+}
+
 function showWindow(hash) {
   if (!win) createWindow();
   if (hash) win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}`).catch(() => {});
@@ -55,21 +64,22 @@ function createWindow() {
     autoHideMenuBar: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0d0d0d' : '#f9f9f7',
     show: false,
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false },
   });
   win.removeMenu();
   win.once('ready-to-show', () => win.show());
   win.loadURL(`http://127.0.0.1:${port}/`);
 
   // Links to the web (search results, docs) open in the default browser.
+  // Only http(s): other schemes (file:, smb:, ms-*: handlers) can launch programs.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isLocal(url)) shell.openExternal(url);
+    if (!isLocal(url)) openWebLink(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (!isLocal(url)) {
       e.preventDefault();
-      shell.openExternal(url);
+      openWebLink(url);
     }
   });
 
@@ -132,6 +142,13 @@ app.on('second-instance', () => showWindow());
 app.on('before-quit', () => (quitting = true));
 app.on('window-all-closed', () => {
   /* stay in the tray */
+});
+
+// The UI never needs the camera, microphone, location, notifications API etc.
+// (tray notifications come from this main process), so deny every request.
+app.on('web-contents-created', (_e, contents) => {
+  contents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  contents.session.setPermissionCheckHandler(() => false);
 });
 
 // Not a top-level await: in an ESM entry point that would hold back the 'ready' event.

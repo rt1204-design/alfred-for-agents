@@ -116,7 +116,8 @@ function cleanAgent(input) {
     description: String(input.description || '').slice(0, 300),
     // 'cli' runs through Claude Code on your subscription; 'api' uses an API key.
     runner: input.runner === 'api' ? 'api' : 'cli',
-    model: String(input.model || 'claude-opus-5-5'),
+    // Model IDs are plain slugs (claude-opus-5-5, optionally with a [1m] suffix); anything else falls back.
+    model: /^[a-z0-9][a-z0-9.-]*(\[1m\])?$/i.test(String(input.model)) ? String(input.model) : 'claude-opus-5-5',
     effort,
     systemPrompt: String(input.systemPrompt || ''),
     webSearch: !!input.webSearch,
@@ -394,20 +395,26 @@ async function runCli(run, ctl, push) {
   // The newest typed prompt (tool results are also stored as user messages).
   const prompt = run.messages.findLast((m) => m.role === 'user' && typeof m.content === 'string').content;
   const tools = cliTools(cfg);
+  // Every value is passed as --flag=value: with "--flag value", a value that
+  // starts with "--" (say, a system prompt) would be parsed as another flag.
   const args = [
     '-p',
-    '--output-format', 'stream-json',
+    '--output-format=stream-json',
     '--verbose',
     '--include-partial-messages',
-    '--model', cfg.model,
-    '--effort', cfg.effort || 'high',
-    '--permission-prompts', 'none',
-    '--tools', tools.length ? tools.join(',') : '',
+    `--model=${cfg.model}`,
+    `--effort=${cfg.effort || 'high'}`,
+    '--permission-prompts=none',
+    `--tools=${tools.join(',')}`,
+    // Only the tools above: no MCP servers from the user's config, and no
+    // settings or hooks from the working folder (which may be untrusted).
+    '--strict-mcp-config',
+    '--setting-sources=user',
   ];
-  if (tools.length) args.push('--allowedTools', tools.join(','));
-  if (cfg.systemPrompt) args.push('--append-system-prompt', cfg.systemPrompt);
-  if (run.cliSessionId) args.push('--resume', run.cliSessionId);
-  else args.push('--name', `Alfred: ${cfg.name}`);
+  if (tools.length) args.push(`--allowedTools=${tools.join(',')}`);
+  if (cfg.systemPrompt) args.push(`--append-system-prompt=${cfg.systemPrompt}`);
+  if (run.cliSessionId) args.push(`--resume=${run.cliSessionId}`);
+  else args.push(`--name=Alfred: ${cfg.name}`);
 
   // Follow-ups resume in the folder the run started in; Claude Code finds sessions by folder.
   const cwd = run.cwd && fsSync.existsSync(run.cwd) ? run.cwd : await agentWorkDir(cfg);
