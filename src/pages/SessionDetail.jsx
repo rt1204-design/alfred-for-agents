@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { Empty, HBars, Icon, Stat } from '../components/ui.jsx';
+import { Empty, HBars, Icon, Loading, Stat } from '../components/ui.jsx';
 import { fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens } from '../format.js';
 
 export default function SessionDetail({ id }) {
@@ -24,16 +24,17 @@ export default function SessionDetail({ id }) {
     <>
       <div className="page-head">
         <div style={{ minWidth: 0 }}>
-          <a href="#/sessions" className="row muted" style={{ fontSize: 13, marginBottom: 6 }}>
-            <Icon name="back" /> All sessions
-          </a>
+          <div className="eyebrow">
+            <a href="#/sessions" className="back-link"><Icon name="back" /> The session book</a>
+            {s?.project && <><span className="sep" />{s.project}</>}
+          </div>
           <h1 className="clamp">{s?.title || s?.firstPrompt || 'Session'}</h1>
-          <p className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>{s?.cwd} · {id}</p>
+          <p className="mono" style={{ wordBreak: 'break-all' }}>{s?.cwd ? `${s.cwd} · ` : ''}{id}</p>
         </div>
       </div>
       {error && <div className="alert error">{error}</div>}
       {!data ? (
-        <div className="card"><Empty title="Loading…" /></div>
+        !error && <div className="card"><Loading>Fetching the session…</Loading></div>
       ) : (
         <div className="stack">
           {s && (
@@ -47,7 +48,7 @@ export default function SessionDetail({ id }) {
           <div className="grid two" style={{ alignItems: 'start' }}>
             <div className="card">
               <div className="card-head">
-                <h2>Timeline</h2>
+                <h2>Service log</h2>
                 <span className="sub">{fmtNum(events.length)} events{data.truncated ? ' (latest 3,000)' : ''}</span>
                 <div className="spacer" />
                 <label className="check"><input type="checkbox" checked={showText} onChange={(e) => setShowText(e.target.checked)} /> Replies</label>
@@ -62,12 +63,12 @@ export default function SessionDetail({ id }) {
                     </div>
                   </div>
                 ))}
-                {events.length === 0 && <div className="muted">Nothing to show.</div>}
+                {events.length === 0 && <Empty title="Nothing to show">Try including replies or subagents.</Empty>}
               </div>
             </div>
             {s && (
-              <div className="card">
-                <div className="card-head"><h2>Tools used</h2></div>
+              <div className="card" style={{ position: 'sticky', top: 20 }}>
+                <div className="card-head"><h2>Tools used</h2><span className="sub">calls</span></div>
                 <div className="card-body">
                   <HBars items={Object.entries(s.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} limit={15} />
                 </div>

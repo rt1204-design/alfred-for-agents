@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Markdown from '../components/Markdown.jsx';
-import { Empty, Icon, Status } from '../components/ui.jsx';
+import { AgentAvatar, Empty, Icon, Loading, Status } from '../components/ui.jsx';
 import { fmtAgo, fmtCost, fmtTokens, totalTokens } from '../format.js';
 
-export default function Runs({ runs, loadRuns, runId }) {
+export default function Runs({ runs, loadRuns, runId, agents }) {
   // Refresh the list while anything is running so statuses stay current.
   const anyRunning = runs.some((r) => r.status === 'running');
   useEffect(() => {
@@ -19,36 +19,44 @@ export default function Runs({ runs, loadRuns, runId }) {
     <>
       <div className="page-head">
         <div>
+          <div className="eyebrow">Section iv<span className="sep" />Errands</div>
           <h1>Runs</h1>
-          <p>Every task you've given an agent, streamed live.</p>
+          <p>Every task you’ve given an agent, followed live as it works.</p>
         </div>
         <div className="spacer" />
         <a className="btn primary" href="#/agents"><Icon name="plus" /> New run</a>
       </div>
       {runs.length === 0 ? (
-        <div className="card"><Empty title="No runs yet"><a href="#/agents">Choose an agent</a> and give it a task.</Empty></div>
+        <div className="card">
+          <Empty art="scene" title="No errands yet">
+            <a href="#/agents">Choose an agent</a> and give it a task. You can follow its thinking and tool calls here as it works.
+          </Empty>
+        </div>
       ) : (
         <div className="run-layout">
-          <div className="card run-list">
+          <nav className="card run-list" aria-label="Runs">
+            <div className="run-list-head">{runs.length} {runs.length === 1 ? 'run' : 'runs'}</div>
             {runs.map((r) => (
-              <a key={r.id} href={`#/runs/${r.id}`} className={`run-item ${r.id === selected ? 'active' : ''}`}>
-                <div className="cell-title clamp">{r.preview}</div>
-                <div className="cell-sub">
-                  <Status status={r.status} />
-                  <span>{r.agentName}</span>
-                  <span>· {fmtAgo(r.createdAt)}</span>
+              <a key={r.id} href={`#/runs/${r.id}`} className={`run-item ${r.id === selected ? 'active' : ''}`} aria-current={r.id === selected ? 'page' : undefined}>
+                <AgentAvatar agent={r} agents={agents} size="sm" />
+                <div style={{ minWidth: 0 }}>
+                  <div className="cell-title clamp">{r.preview}</div>
+                  <div className="cell-sub">
+                    <Status status={r.status} />
+                    <span>{r.agentName} · {fmtAgo(r.createdAt)}</span>
+                  </div>
                 </div>
               </a>
             ))}
-          </div>
-          {selected && <RunView key={selected} id={selected} onChange={loadRuns} />}
+          </nav>
+          {selected && <RunView key={selected} id={selected} agents={agents} onChange={loadRuns} />}
         </div>
       )}
     </>
   );
 }
 
-function RunView({ id, onChange }) {
+function RunView({ id, agents, onChange }) {
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
   const [reply, setReply] = useState('');
@@ -112,15 +120,35 @@ function RunView({ id, onChange }) {
     window.location.hash = '#/runs';
   }
 
-  if (!run) return <div className="card"><Empty title={error || 'Loading…'} /></div>;
+  if (!run) return <div className="card">{error ? <Empty title={error} /> : <Loading />}</div>;
   const running = run.status === 'running';
+  const agent = <AgentAvatar agent={run} agents={agents} />;
+  const turns = groupTurns(run.messages);
+  // The reply being streamed joins the agent's current turn.
+  if (run.live || running) {
+    let last = turns.at(-1);
+    if (!last || last.role !== 'agent') turns.push((last = { role: 'agent', parts: [] }));
+    last.live = true;
+    const blocks = run.live?.content.filter(Boolean) || [];
+    blocks.forEach((b, i) => last.parts.push(<Block key={`live-${i}`} b={b} live={i === blocks.length - 1} />));
+    if (running && !blocks.length) {
+      last.parts.push(
+        <div key="attending" className="attending">
+          <span className="dots"><span /><span /><span /></span> On it…
+        </div>,
+      );
+    }
+  }
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-      <div className="card-head" style={{ paddingBottom: 12, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        <h2>{run.agentName}</h2>
-        <Status status={run.status} />
-        <div className="spacer" />
+    <section className="card run-sheet" aria-label={`Run by ${run.agentName}`}>
+      <div className="run-top">
+        <AgentAvatar agent={run} agents={agents} size="lg" />
+        <div className="who">
+          <h2>{run.agentName}</h2>
+          <Status status={run.status} />
+        </div>
+        <div className="spacer" style={{ flex: 1 }} />
         <div className="run-meta">
           <span><b>{run.runner === 'cli' ? 'Subscription' : 'API key'}</b></span>
           <span><b>{run.model}</b></span>
@@ -133,50 +161,65 @@ function RunView({ id, onChange }) {
         {running ? (
           <button className="btn sm danger" onClick={() => api.stopRun(id)}><Icon name="stop" /> Stop</button>
         ) : (
-          <button className="btn sm ghost danger" onClick={remove} aria-label="Delete run"><Icon name="trash" /></button>
+          <button className="btn sm ghost danger" onClick={remove} aria-label="Delete run" title="Delete run"><Icon name="trash" /></button>
         )}
       </div>
 
       <div className="conv" onWheel={(e) => { stick.current = e.deltaY > 0; }}>
-        {run.messages.map((m, i) => {
-          if (m.role === 'assistant') return <Assistant key={i} blocks={m.content} />;
-          if (typeof m.content === 'string') return <div key={i} className="msg-user">{m.content}</div>;
-          // Tool results the CLI fed back to the model.
-          return <div key={i} className="msg-assistant">{m.content.map((b, j) => <ToolResult key={j} b={b} />)}</div>;
-        })}
-        {run.live && <Assistant blocks={run.live.content.filter(Boolean)} live />}
-        {running && !run.live?.content.length && <div className="muted cursor">Thinking</div>}
+        {turns.map((t, i) => (
+          t.role === 'user' ? (
+            <div key={i} className="turn turn-user">
+              <div className="turn-who"><span className="label">You</span></div>
+              <div className="turn-body">{t.text}</div>
+            </div>
+          ) : (
+            <div key={i} className="turn turn-agent">
+              <div className="turn-who">{agent}</div>
+              <div className="turn-body" aria-live={t.live ? 'polite' : undefined}>{t.parts}</div>
+            </div>
+          )
+        ))}
         {run.error && (
-          <div className="alert error row" style={{ margin: 0, alignItems: 'flex-start' }}>
+          <div className="alert error row" style={{ margin: '12px 0 0', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}><strong>Run failed.</strong> {run.error}</div>
             {run.messages.at(-1)?.role === 'user' && <button className="btn sm" onClick={retry}><Icon name="refresh" /> Retry</button>}
           </div>
         )}
-        {error && <div className="alert error" style={{ margin: 0 }}>{error}</div>}
-        {run.status === 'refused' && <div className="alert error" style={{ margin: 0 }}>The model declined this request.</div>}
-        {run.status === 'stopped' && <div className="muted">Stopped.</div>}
+        {error && <div className="alert error" style={{ margin: '12px 0 0' }}>{error}</div>}
+        {run.status === 'refused' && <div className="alert error" style={{ margin: '12px 0 0' }}>The model declined this request.</div>}
+        {run.status === 'stopped' && <div className="run-note">Stopped before finishing.</div>}
         <div ref={bottom} />
       </div>
 
       <form className="composer" onSubmit={send}>
         <textarea
           className="textarea" rows={1} value={reply} disabled={running}
-          placeholder={running ? 'Wait for the agent to finish…' : 'Send a follow-up…'}
+          placeholder={running ? 'Wait for the agent to finish…' : `Send ${run.agentName} a follow-up…`}
+          aria-label="Follow-up message"
           onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) send(e); }}
         />
         <button className="btn primary" disabled={running || busy || !reply.trim()}><Icon name="send" /> Send</button>
       </form>
-    </div>
+    </section>
   );
 }
 
-function Assistant({ blocks, live }) {
-  return (
-    <div className="msg-assistant">
-      {blocks.map((b, i) => <Block key={i} b={b} live={live && i === blocks.length - 1} />)}
-    </div>
-  );
+// Fold the message list into turns: each thing you typed, then everything the
+// agent did in reply (its blocks plus the tool results the CLI fed back).
+function groupTurns(messages) {
+  const turns = [];
+  messages.forEach((m, i) => {
+    if (m.role === 'user' && typeof m.content === 'string') {
+      turns.push({ role: 'user', text: m.content });
+      return;
+    }
+    let last = turns.at(-1);
+    if (!last || last.role !== 'agent') turns.push((last = { role: 'agent', parts: [] }));
+    if (m.role === 'assistant') m.content.forEach((b, j) => last.parts.push(<Block key={`${i}-${j}`} b={b} />));
+    else m.content.forEach((b, j) => last.parts.push(<ToolResult key={`${i}-${j}`} b={b} />));
+  });
+  return turns;
 }
 
 function ToolResult({ b }) {
@@ -184,11 +227,9 @@ function ToolResult({ b }) {
   const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c) => c.text || '').join('\n');
   const first = text.trim().split('\n')[0] || '(no output)';
   return (
-    <details className="blk-tool" style={b.is_error ? { color: 'var(--critical)' } : undefined}>
-      <summary style={{ cursor: 'pointer' }} className="mono">
-        {b.is_error ? 'Error: ' : '→ '}{first.slice(0, 160)}
-      </summary>
-      <pre style={{ whiteSpace: 'pre-wrap', margin: '6px 0 0', maxHeight: 260, overflow: 'auto' }}>{text.slice(0, 6000)}</pre>
+    <details className={`blk-tool ${b.is_error ? 'err' : ''}`}>
+      <summary>{b.is_error ? 'Error: ' : '→ '}{first.slice(0, 160)}</summary>
+      <pre>{text.slice(0, 6000)}</pre>
     </details>
   );
 }
@@ -201,7 +242,7 @@ function Block({ b, live }) {
       if (!b.thinking) return null;
       return (
         <details className="blk-thinking" open={live}>
-          <summary>Thinking</summary>
+          <summary>{live ? 'thinking…' : 'thinking'}</summary>
           {b.thinking}
         </details>
       );
@@ -216,13 +257,17 @@ function Block({ b, live }) {
       return <div className="blk-tool"><b>{b.name}</b> <span className="mono">{String(what).slice(0, 300)}</span></div>;
     }
     case 'web_search_tool_result': {
-      if (!Array.isArray(b.content)) return <div className="blk-tool">Search failed: {b.content?.error_code}</div>;
+      if (!Array.isArray(b.content)) return <div className="blk-tool err">Search failed: {b.content?.error_code}</div>;
       return (
         <div className="blk-tool">
           <b>{b.content.length} results</b>
           <ul>
             {b.content.slice(0, 6).map((r) => (
-              <li key={r.url}><a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a></li>
+              <li key={r.url}>
+                {/^https?:\/\//i.test(r.url || '')
+                  ? <a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a>
+                  : r.title || r.url}
+              </li>
             ))}
           </ul>
         </div>
@@ -230,7 +275,7 @@ function Block({ b, live }) {
     }
     case 'web_fetch_tool_result': {
       const c = b.content;
-      if (c?.type?.endsWith('error')) return <div className="blk-tool">Fetch failed: {c.error_code}</div>;
+      if (c?.type?.endsWith('error')) return <div className="blk-tool err">Fetch failed: {c.error_code}</div>;
       return <div className="blk-tool"><b>Read</b> {c?.content?.title || c?.url}</div>;
     }
     default:
