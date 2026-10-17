@@ -6,26 +6,13 @@ import sharp from 'sharp';
 
 const SRC = 'assets/alfred.png';
 const OUT = 'public/art';
-const SIGNATURE = { left: 320, top: 686, width: 290, height: 100 };
 // `box` is the crop, `clear` paints over neighbouring bits of the drawing
 // (both in source pixels).
 const PIECES = {
-  // Alfred holding the tray of robots, without the signature.
-  'alfred-scene': { box: { left: 95, top: 28, width: 880, height: 680 }, clear: [SIGNATURE] },
-  // Alfred alone, from the head to the shoulders.
-  'alfred-bust': {
-    box: { left: 420, top: 312, width: 560, height: 392 },
-    clear: [{ left: 380, top: 280, width: 165, height: 200 }, SIGNATURE],
-  },
   // Just the head, for the brand mark.
   'alfred-head': { box: { left: 578, top: 310, width: 232, height: 210 } },
   // The owner's handwritten "Alfred".
   'alfred-signature': { box: { left: 322, top: 688, width: 276, height: 90 } },
-  // One robot from the tray, used as the staff (agent) portrait.
-  robot: {
-    box: { left: 236, top: 30, width: 160, height: 138 },
-    clear: [{ left: 236, top: 138, width: 20, height: 32 }, { left: 381, top: 140, width: 17, height: 30 }],
-  },
 };
 
 const flat = await sharp(SRC).flatten({ background: '#ffffff' }).toBuffer();

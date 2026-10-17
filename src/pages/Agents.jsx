@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { findLead } from '../components/Robot.jsx';
 import { AgentAvatar, Empty, Icon } from '../components/ui.jsx';
 import { fmtAgo, fmtCost } from '../format.js';
 
@@ -14,15 +15,6 @@ const BLANK = {
   name: '', description: '', runner: 'cli', model: 'claude-opus-5-5', effort: 'high', systemPrompt: '',
   webSearch: false, webFetch: false, fileAccess: 'none', allowCommands: false, workDir: '', maxTokens: 64000,
 };
-
-// An agent whose description says it oversees or coordinates the others leads
-// the roster. Judged from its role, not its name, and only when exactly one
-// agent fits.
-const LEAD_ROLE = /\b(oversee\w*|overseer|supervis\w*|coordinat\w*)\b/i;
-function findLead(agents) {
-  const leads = agents.filter((a) => LEAD_ROLE.test(a.description || ''));
-  return leads.length === 1 ? leads[0] : null;
-}
 
 export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
   const [editing, setEditing] = useState(null); // agent object or BLANK
@@ -73,7 +65,7 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
           </div>
         </div>
         <div className="actions">
-          <button className="btn accent sm" onClick={() => setLaunching(a)}><Icon name="play" /> Give a task</button>
+          <button className="btn sm" onClick={() => setLaunching(a)}><Icon name="play" /> Give a task</button>
           <button className="btn sm" onClick={() => setEditing(a)}><Icon name="edit" /> Edit</button>
           <button className="btn sm ghost danger" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete agent"><Icon name="trash" /></button>
         </div>
@@ -95,8 +87,8 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
       <CliBanner health={health} usesApi={agents.some((a) => a.runner === 'api')} />
 
       {agents.length === 0 ? (
-        <Empty art="scene" title="No agents yet">
-          Create your first agent and it can take on tasks straight away.
+        <Empty robot title="No agents yet">
+          An agent is a Claude with a role and a set of tools. Create one to start giving it tasks.
           <div style={{ marginTop: 14 }}>
             <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
           </div>

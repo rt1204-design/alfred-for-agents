@@ -33,6 +33,12 @@ export function fmtAgo(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+// MCP tools are logged as "mcp__server__tool"; show "tool · server".
+export function toolLabel(name) {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name);
+  return m ? `${m[2]} · ${m[1]}` : name;
+}
+
 // A clock time for today, otherwise a short date.
 export function fmtWhen(ts) {
   if (!ts) return '–';
