@@ -9,6 +9,34 @@ import { getSessionDetail, getSummary } from './claudeCode.js';
 import { AGENT_MODELS } from './pricing.js';
 
 const app = express();
+
+// Only this computer's own pages may talk to the server. The server already
+// listens on 127.0.0.1 only; these checks also stop web pages in a browser from
+// reaching it (DNS rebinding, cross-site requests).
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const hostnameOf = (hostHeader) => String(hostHeader || '').replace(/:\d+$/, '').toLowerCase();
+const originHostname = (origin) => {
+  try {
+    return new URL(origin).hostname; // IPv6 comes back bracketed, e.g. "[::1]"
+  } catch {
+    return ''; // "null" or malformed
+  }
+};
+app.use((req, res, next) => {
+  // A rebinding attack arrives with the attacker's domain in the Host header.
+  if (!LOCAL_HOSTS.has(hostnameOf(req.headers.host))) return res.status(403).json({ error: 'Forbidden host' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    // Requests from another website carry that site's Origin ("null" from sandboxed pages).
+    const origin = req.headers.origin;
+    if (origin !== undefined && !LOCAL_HOSTS.has(originHostname(origin))) {
+      return res.status(403).json({ error: 'Forbidden origin' });
+    }
+    // A custom header can't be sent cross-site without a CORS preflight, which this server never grants.
+    if (req.headers['x-alfred'] !== '1') return res.status(403).json({ error: 'Missing X-Alfred header' });
+  }
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 
 const wrap = (fn) => (req, res) =>
