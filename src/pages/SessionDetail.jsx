@@ -24,57 +24,52 @@ export default function SessionDetail({ id }) {
     <>
       <div className="page-head">
         <div style={{ minWidth: 0 }}>
-          <div className="eyebrow">
-            <a href="#/sessions" className="back-link"><Icon name="back" /> The session book</a>
-            {s?.project && <><span className="sep" />{s.project}</>}
-          </div>
+          <a href="#/sessions" className="back-link"><Icon name="back" /> All sessions{s?.project ? ` · ${s.project}` : ''}</a>
           <h1 className="clamp">{s?.title || s?.firstPrompt || 'Session'}</h1>
           <p className="mono" style={{ wordBreak: 'break-all' }}>{s?.cwd ? `${s.cwd} · ` : ''}{id}</p>
         </div>
       </div>
       {error && <div className="alert error">{error}</div>}
       {!data ? (
-        !error && <div className="card"><Loading>Fetching the session…</Loading></div>
+        !error && <Loading>Loading the session…</Loading>
       ) : (
         <div className="stack">
           {s && (
-            <div className="grid kpis">
+            <div className="kpis">
               <Stat label="Est. cost" value={fmtCost(s.cost)} note={Object.keys(s.models).join(', ')} />
               <Stat label="Tokens" value={fmtTokens(s.totalTokens)} note={`${fmtTokens(s.usage.output)} output · ${fmtTokens(s.usage.cacheRead)} cache read`} />
               <Stat label="Prompts / API calls" value={`${fmtNum(s.prompts)} / ${fmtNum(s.apiCalls)}`} />
               <Stat label="Duration" value={fmtDuration(s.start, s.end)} note={`${fmtDate(s.start)} → ${fmtDate(s.end)}`} />
             </div>
           )}
-          <div className="grid two" style={{ alignItems: 'start' }}>
-            <div className="card">
-              <div className="card-head">
-                <h2>Service log</h2>
-                <span className="sub">{fmtNum(events.length)} events{data.truncated ? ' (latest 3,000)' : ''}</span>
-                <div className="spacer" />
-                <label className="check"><input type="checkbox" checked={showText} onChange={(e) => setShowText(e.target.checked)} /> Replies</label>
-                <label className="check"><input type="checkbox" checked={showSide} onChange={(e) => setShowSide(e.target.checked)} /> Subagents</label>
+          {s && (
+            <section className="card">
+              <div className="card-head"><h2>Tools used</h2><span className="sub">calls</span></div>
+              <div className="card-body">
+                <HBars items={Object.entries(s.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} limit={10} />
               </div>
-              <div className="card-body timeline">
-                {events.map((e, i) => (
-                  <div key={i} className={`ev ev-${e.kind === 'tool_error' ? 'error' : e.kind} ${e.sidechain ? 'side' : ''}`}>
-                    <div className="ev-time">{e.ts ? new Date(e.ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : ''}</div>
-                    <div className="ev-body">
-                      {e.kind === 'tool' ? (<><b>{e.name}</b> {e.detail}</>) : e.text}
-                    </div>
-                  </div>
-                ))}
-                {events.length === 0 && <Empty title="Nothing to show">Try including replies or subagents.</Empty>}
-              </div>
+            </section>
+          )}
+          <section className="card">
+            <div className="card-head">
+              <h2>Timeline</h2>
+              <span className="sub">{fmtNum(events.length)} events{data.truncated ? ' (latest 3,000)' : ''}</span>
+              <div className="spacer" />
+              <label className="check"><input type="checkbox" checked={showText} onChange={(e) => setShowText(e.target.checked)} /> Replies</label>
+              <label className="check"><input type="checkbox" checked={showSide} onChange={(e) => setShowSide(e.target.checked)} /> Subagents</label>
             </div>
-            {s && (
-              <div className="card" style={{ position: 'sticky', top: 20 }}>
-                <div className="card-head"><h2>Tools used</h2><span className="sub">calls</span></div>
-                <div className="card-body">
-                  <HBars items={Object.entries(s.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} limit={15} />
+            <div className="card-body timeline">
+              {events.map((e, i) => (
+                <div key={i} className={`ev ev-${e.kind === 'tool_error' ? 'error' : e.kind} ${e.sidechain ? 'side' : ''}`}>
+                  <div className="ev-time">{e.ts ? new Date(e.ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : ''}</div>
+                  <div className="ev-body">
+                    {e.kind === 'tool' ? (<><b>{e.name}</b> {e.detail}</>) : e.text}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              ))}
+              {events.length === 0 && <Empty title="Nothing to show">Try including replies or subagents.</Empty>}
+            </div>
+          </section>
         </div>
       )}
     </>

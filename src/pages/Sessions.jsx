@@ -31,7 +31,6 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
     <>
       <div className="page-head">
         <div>
-          <div className="eyebrow">Section ii<span className="sep" />The session book</div>
           <h1>Claude Code sessions</h1>
           <p>Every conversation Claude Code has logged on this machine.</p>
         </div>
@@ -61,8 +60,8 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
         {!summary ? (
           <Loading>Reading the session logs…</Loading>
         ) : rows.length === 0 ? (
-          <Empty art="bust" title={q || project ? 'Nothing matches, I’m afraid' : 'No sessions yet'}>
-            {q || project ? 'Try a different search or project.' : 'Claude Code sessions are entered here once they’ve written logs.'}
+          <Empty art={q || project ? undefined : 'bust'} title={q || project ? 'No matching sessions' : 'No sessions yet'}>
+            {q || project ? 'Try a different search or project.' : 'Claude Code sessions show up here once they’ve written logs.'}
           </Empty>
         ) : (
           <div className="table-wrap">
@@ -70,12 +69,12 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
               <thead>
                 <tr>
                   <th>Session</th>
-                  <th>Project</th>
+                  <th className="col-wide">Project</th>
                   <th className="num">Prompts</th>
-                  <th className="num">Tool calls</th>
+                  <th className="num col-wide">Tool calls</th>
                   <th className="num">Tokens</th>
                   <th className="num">Est. cost</th>
-                  <th className="num">Duration</th>
+                  <th className="num col-wide">Duration</th>
                   <th className="num">Last active</th>
                 </tr>
               </thead>
@@ -85,16 +84,17 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
                     <td style={{ maxWidth: 380 }}>
                       <a className="cell-title clamp" href={`#/sessions/${s.id}`} style={{ color: 'inherit' }}>{s.title || s.firstPrompt || 'Untitled session'}</a>
                       {s.title && s.firstPrompt && <div className="cell-sub clamp">{s.firstPrompt}</div>}
+                      <div className="cell-sub only-narrow">{s.project}</div>
                     </td>
-                    <td className="wrap">
+                    <td className="wrap col-wide">
                       <div>{s.project}</div>
                       <div className="cell-sub">{s.entrypoint}{s.gitBranch && s.gitBranch !== 'HEAD' ? ` · ${s.gitBranch}` : ''}</div>
                     </td>
                     <td className="num">{fmtNum(s.prompts)}</td>
-                    <td className="num">{fmtNum(s.toolCalls)}</td>
+                    <td className="num col-wide">{fmtNum(s.toolCalls)}</td>
                     <td className="num">{fmtTokens(s.totalTokens)}</td>
                     <td className="num strong">{fmtCost(s.cost)}</td>
-                    <td className="num">{fmtDuration(s.start, s.end)}</td>
+                    <td className="num col-wide">{fmtDuration(s.start, s.end)}</td>
                     <td className="num">{fmtAgo(s.end)}</td>
                   </tr>
                 ))}

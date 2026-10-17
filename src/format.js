@@ -33,6 +33,15 @@ export function fmtAgo(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+// A clock time for today, otherwise a short date.
+export function fmtWhen(ts) {
+  if (!ts) return '–';
+  const d = new Date(ts);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function fmtDuration(a, b) {
   if (!a || !b) return '–';
   const s = Math.max(0, (new Date(b) - new Date(a)) / 1000);
