@@ -54,7 +54,7 @@ Cost, tokens, prompts and tool calls per day for the last 7, 30 or 90 days. See 
 Alfred gets its own window and a tray icon. When an agent finishes in the background, you get a Windows notification. Alfred can also start with Windows.
 
 ### 🎩 A butler, not a dashboard
-The design is a butler's service ledger, drawn from the hand-made Alfred illustration: Caslon type, ruled pages, a robot portrait for each agent on your staff, and Day and Evening themes.
+A calm, single-column design built around the hand-drawn Alfred illustration: Caslon headings, a robot portrait for each agent, an overseer agent shown first, and Day and Evening themes.
 
 </td>
 </tr>
@@ -62,7 +62,7 @@ The design is a butler's service ledger, drawn from the hand-made Alfred illustr
 
 ![A Researcher agent run: web searches and page reads stream in on a thread, followed by a sourced answer](docs/screenshots/run.png)
 
-![The Agents page: three starter agents, each with its own robot portrait](docs/screenshots/agents.png)
+![The Agents page with an example team: a Lead that oversees the others, two Devs, Research and Design](docs/screenshots/agents.png)
 
 <table>
 <tr>
