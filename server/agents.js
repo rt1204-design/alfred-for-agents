@@ -117,7 +117,7 @@ function cleanAgent(input) {
     // 'cli' runs through Claude Code on your subscription; 'api' uses an API key.
     runner: input.runner === 'api' ? 'api' : 'cli',
     // Model IDs are plain slugs (claude-opus-5-5, optionally with a [1m] suffix); anything else falls back.
-    model: /^[a-z0-9][a-z0-9.-]*(\[1m\])?$/i.test(String(input.model)) ? String(input.model) : 'claude-opus-5-5',
+    model: typeof input.model === 'string' && /^[a-z0-9][a-z0-9.-]*(\[1m\])?$/i.test(input.model) ? input.model : 'claude-opus-5-5',
     effort,
     systemPrompt: String(input.systemPrompt || ''),
     webSearch: !!input.webSearch,
@@ -388,12 +388,8 @@ async function agentWorkDir(cfg) {
   return dir;
 }
 
-async function runCli(run, ctl, push) {
-  const bin = resolveClaudeBin();
-  if (!bin) throw new Error('CLI_NOT_FOUND');
-  const cfg = run.config;
-  // The newest typed prompt (tool results are also stored as user messages).
-  const prompt = run.messages.findLast((m) => m.role === 'user' && typeof m.content === 'string').content;
+// The `claude` command line for one agent turn. Exported for tests.
+export function buildCliArgs(cfg, cliSessionId) {
   const tools = cliTools(cfg);
   // Every value is passed as --flag=value: with "--flag value", a value that
   // starts with "--" (say, a system prompt) would be parsed as another flag.
@@ -413,8 +409,18 @@ async function runCli(run, ctl, push) {
   ];
   if (tools.length) args.push(`--allowedTools=${tools.join(',')}`);
   if (cfg.systemPrompt) args.push(`--append-system-prompt=${cfg.systemPrompt}`);
-  if (run.cliSessionId) args.push(`--resume=${run.cliSessionId}`);
+  if (cliSessionId) args.push(`--resume=${cliSessionId}`);
   else args.push(`--name=Alfred: ${cfg.name}`);
+  return args;
+}
+
+async function runCli(run, ctl, push) {
+  const bin = resolveClaudeBin();
+  if (!bin) throw new Error('CLI_NOT_FOUND');
+  const cfg = run.config;
+  // The newest typed prompt (tool results are also stored as user messages).
+  const prompt = run.messages.findLast((m) => m.role === 'user' && typeof m.content === 'string').content;
+  const args = buildCliArgs(cfg, run.cliSessionId);
 
   // Follow-ups resume in the folder the run started in; Claude Code finds sessions by folder.
   const cwd = run.cwd && fsSync.existsSync(run.cwd) ? run.cwd : await agentWorkDir(cfg);
