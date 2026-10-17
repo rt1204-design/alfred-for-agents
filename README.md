@@ -176,6 +176,15 @@ Put these in the `.env` file:
 | `CLAUDE_PROJECTS_DIR` | Read Claude Code logs from somewhere other than `~/.claude/projects`. |
 | `PORT` | Port for the browser version (default `3001`). |
 
+## Security
+
+- **Your Claude login stays with the Claude Code CLI.** Alfred never sees or stores your Claude credentials; it starts the `claude` program, which uses whatever account you signed it in with. Each person who installs Alfred signs in with their own account.
+- **Local only.** Alfred's server listens on `127.0.0.1`, so other devices on your network can't reach it. It also rejects requests addressed to any other host name or sent from other websites, which blocks DNS-rebinding and cross-site attacks from pages open in your browser.
+- **Tools are opt-in and pre-approved.** An agent can only use the tools you turn on, and it uses them without asking. Don't give one agent both **web access** and **shell or file-edit access**: text on a web page could try to steer it into running commands.
+- **API keys** (optional) stay in your local `.env` file and are only sent to Anthropic.
+
+Found a security problem? Please open an issue, or contact the maintainer privately for anything sensitive.
+
 ## Project structure
 
 ```

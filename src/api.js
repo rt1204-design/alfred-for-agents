@@ -1,9 +1,7 @@
 async function request(method, url, body) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const headers = { 'X-Alfred': '1' }; // the server rejects writes without it (see server/index.js)
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
