@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { AgentAvatar, Art, Empty, Icon, staffHue } from '../components/ui.jsx';
+import { AgentAvatar, Empty, Icon } from '../components/ui.jsx';
 import { fmtAgo, fmtCost } from '../format.js';
 
 const FALLBACK_MODELS = [
@@ -15,10 +15,21 @@ const BLANK = {
   webSearch: false, webFetch: false, fileAccess: 'none', allowCommands: false, workDir: '', maxTokens: 64000,
 };
 
+// An agent whose description says it oversees or coordinates the others leads
+// the roster. Judged from its role, not its name, and only when exactly one
+// agent fits.
+const LEAD_ROLE = /\b(oversee\w*|overseer|supervis\w*|coordinat\w*)\b/i;
+function findLead(agents) {
+  const leads = agents.filter((a) => LEAD_ROLE.test(a.description || ''));
+  return leads.length === 1 ? leads[0] : null;
+}
+
 export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
   const [editing, setEditing] = useState(null); // agent object or BLANK
   const [launching, setLaunching] = useState(null); // agent
   const models = health?.models || FALLBACK_MODELS;
+  const lead = findLead(agents);
+  const team = agents.filter((a) => a !== lead);
 
   const statsFor = (id) => {
     const rs = runs.filter((r) => r.agentId === id);
@@ -31,13 +42,51 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
     loadAgents();
   }
 
+  const row = (a) => {
+    const st = statsFor(a.id);
+    const model = models.find((m) => m.id === a.model)?.label.replace(' (default)', '').replace(/^Claude /, '') || a.model;
+    const isLead = a === lead;
+    return (
+      <article className={`staff-row ${isLead ? 'lead' : ''}`} key={a.id}>
+        <AgentAvatar agent={a} agents={agents} size={isLead ? 'xl' : 'lg'} />
+        <div className="staff-main">
+          <div className="staff-name">
+            <h3>{a.name}</h3>
+            {isLead && <span className="tag">Oversees the team</span>}
+          </div>
+          <p className="role">{a.description || a.systemPrompt || 'No description'}</p>
+          <div className="chips">
+            <span className="chip" title={a.runner === 'api' ? 'Billed per token with your API key' : 'Uses your Claude plan through the Claude Code CLI'}>
+              {a.runner === 'api' ? 'API key' : 'Subscription'}
+            </span>
+            <span className="chip">{model}</span>
+            <span className="chip">{a.effort} effort</span>
+            {a.webSearch && <span className="chip">web search</span>}
+            {a.webFetch && <span className="chip">web fetch</span>}
+            {a.runner !== 'api' && a.fileAccess && a.fileAccess !== 'none' && <span className="chip">files: {a.fileAccess}</span>}
+            {a.runner !== 'api' && a.allowCommands && <span className="chip">commands</span>}
+          </div>
+          <div className="staff-record">
+            <span><b>{st.count}</b> {st.count === 1 ? 'run' : 'runs'}</span>
+            <span><b>{fmtCost(st.cost)}</b>{a.runner === 'api' ? '' : ' equiv.'}</span>
+            {st.last && <span>last run {fmtAgo(st.last)}</span>}
+          </div>
+        </div>
+        <div className="actions">
+          <button className="btn accent sm" onClick={() => setLaunching(a)}><Icon name="play" /> Give a task</button>
+          <button className="btn sm" onClick={() => setEditing(a)}><Icon name="edit" /> Edit</button>
+          <button className="btn sm ghost danger" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete agent"><Icon name="trash" /></button>
+        </div>
+      </article>
+    );
+  };
+
   return (
     <>
       <div className="page-head">
         <div>
-          <div className="eyebrow">Section iii<span className="sep" />Alfred’s staff</div>
           <h1>Agents</h1>
-          <p>Each one is a Claude with a role: a model, a standing brief and the tools it’s trusted with.</p>
+          <p>Each agent is a Claude with a role: a model, a standing brief and the tools it may use.</p>
         </div>
         <div className="spacer" />
         <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
@@ -46,61 +95,22 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
       <CliBanner health={health} usesApi={agents.some((a) => a.runner === 'api')} />
 
       {agents.length === 0 ? (
-        <div className="card">
-          <Empty art="scene" title="No one on staff yet">
-            Take on your first agent and it will be ready for errands straight away.
-            <div style={{ marginTop: 14 }}>
-              <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
-            </div>
-          </Empty>
-        </div>
+        <Empty art="scene" title="No agents yet">
+          Create your first agent and it can take on tasks straight away.
+          <div style={{ marginTop: 14 }}>
+            <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
+          </div>
+        </Empty>
       ) : (
-        <div className="agent-grid">
-          {agents.map((a, n) => {
-            const st = statsFor(a.id);
-            const model = models.find((m) => m.id === a.model)?.label.replace(' (default)', '').replace(/^Claude /, '') || a.model;
-            return (
-              <article className="staff-card" key={a.id} style={{ '--hue': staffHue(a, agents) }}>
-                <div className="staff-portrait">
-                  <span className="staff-no">No. {n + 1}</span>
-                  <Art name="robot" />
-                  <span className="chip staff-runner" title={a.runner === 'api' ? 'Billed per token with your API key' : 'Uses your Claude plan through the Claude Code CLI'}>
-                    {a.runner === 'api' ? 'API key' : 'Subscription'}
-                  </span>
-                </div>
-                <div className="staff-body">
-                  <div>
-                    <h3>{a.name}</h3>
-                    <p className="role clamp">{a.description || a.systemPrompt || 'No description'}</p>
-                  </div>
-                  <div className="chips">
-                    <span className="chip strong">{model}</span>
-                    <span className="chip">{a.effort} effort</span>
-                    {a.webSearch && <span className="chip">web search</span>}
-                    {a.webFetch && <span className="chip">web fetch</span>}
-                    {a.runner !== 'api' && a.fileAccess && a.fileAccess !== 'none' && <span className="chip">files: {a.fileAccess}</span>}
-                    {a.runner !== 'api' && a.allowCommands && <span className="chip">commands</span>}
-                  </div>
-                  <div className="staff-record">
-                    <span><b>{st.count}</b> {st.count === 1 ? 'run' : 'runs'}</span>
-                    <span><b>{fmtCost(st.cost)}</b>{a.runner === 'api' ? '' : ' equiv.'}</span>
-                    {st.last && <span>last run {fmtAgo(st.last)}</span>}
-                  </div>
-                </div>
-                <div className="actions">
-                  <button className="btn primary sm" onClick={() => setLaunching(a)}><Icon name="play" /> Give a task</button>
-                  <button className="btn sm" onClick={() => setEditing(a)}><Icon name="edit" /> Edit</button>
-                  <div style={{ flex: 1 }} />
-                  <button className="btn sm ghost danger" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete agent"><Icon name="trash" /></button>
-                </div>
-              </article>
-            );
-          })}
-          <button className="hire-card" onClick={() => setEditing(BLANK)}>
-            <Art name="robot" />
-            <strong>Take on another agent</strong>
-            <span>A new role, model and set of tools</span>
-          </button>
+        <div className="roster">
+          {lead && (
+            <>
+              <div className="roster-label">Lead</div>
+              {row(lead)}
+              <div className="roster-label">Team · {team.length}</div>
+            </>
+          )}
+          {team.map(row)}
         </div>
       )}
 
@@ -295,7 +305,7 @@ function LaunchDialog({ agent, agents, onClose, onStarted }) {
           <div className="field">
             <label htmlFor="launch-task">Task</label>
             <textarea
-              id="launch-task" className="textarea ruled" rows={6} autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)}
+              id="launch-task" className="textarea" rows={6} autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder="What should the agent do?"
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) go(e); }}
             />
