@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
-import { Icon } from './components/ui.jsx';
+import { Art, Icon } from './components/ui.jsx';
 import Overview from './pages/Overview.jsx';
 import Sessions from './pages/Sessions.jsx';
 import SessionDetail from './pages/SessionDetail.jsx';
@@ -65,31 +65,83 @@ export default function App() {
   else page = <Overview {...ctx} />;
 
   const running = runs.filter((r) => r.status === 'running').length;
+  // Numbered like the sections of a ledger.
   const nav = [
-    { id: 'overview', label: 'Overview', icon: 'overview', href: '#/' },
-    { id: 'sessions', label: 'Claude Code', icon: 'terminal', href: '#/sessions', count: summary?.sessions.length },
-    { id: 'agents', label: 'Agents', icon: 'agent', href: '#/agents', count: agents.length },
-    { id: 'runs', label: 'Runs', icon: 'play', href: '#/runs', count: running ? `${running} live` : runs.length },
+    { id: 'overview', num: 'i', label: 'Overview', href: '#/' },
+    { id: 'sessions', num: 'ii', label: 'Claude Code', href: '#/sessions', count: summary?.sessions.length },
+    { id: 'agents', num: 'iii', label: 'Agents', href: '#/agents', count: agents.length },
+    { id: 'runs', num: 'iv', label: 'Runs', href: '#/runs', count: running ? `${running} live` : runs.length, live: running > 0 },
   ];
+  const cli = health?.cli;
 
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand"><img className="brand-mark" src="/alfred-head.png" alt="" />Alfred for Agents</div>
-        {nav.map((n) => (
-          <a key={n.id} href={n.href} className={`nav-link ${section === n.id ? 'active' : ''}`}>
-            <Icon name={n.icon} />
-            {n.label}
-            {n.count != null && <span className="nav-count">{n.count}</span>}
-          </a>
-        ))}
+        <a className="brand" href="#/" aria-label="Alfred for Agents">
+          <Art name="head" />
+          <span className="brand-name">
+            <Art name="signature" />
+            <small>for Agents</small>
+          </span>
+        </a>
+        <nav aria-label="Sections">
+          {nav.map((n) => (
+            <a key={n.id} href={n.href} className={`nav-link ${section === n.id ? 'active' : ''}`} aria-current={section === n.id ? 'page' : undefined}>
+              <span className="nav-num">{n.num}.</span>
+              <span className="nav-label">{n.label}</span>
+              {n.count != null && <span className={`nav-count ${n.live ? 'live' : ''}`}>{n.count}</span>}
+            </a>
+          ))}
+        </nav>
         <div className="sidebar-foot">
-          {health?.cli?.loggedIn
-            ? `CLI signed in${health.cli.subscriptionType ? ` · ${health.cli.subscriptionType}` : ''}`
-            : health?.cli?.bin ? 'CLI not signed in' : health ? 'CLI not installed' : ''}
+          {health && (
+            <>
+              <div className="hand">{cli?.loggedIn ? 'At your service.' : 'Not quite ready, I’m afraid.'}</div>
+              <div className={`service ${cli?.loggedIn ? 'on' : 'off'}`}>
+                <span className="dot" />
+                {cli?.loggedIn
+                  ? `Claude CLI signed in${cli.subscriptionType ? ` · ${cli.subscriptionType}` : ''}`
+                  : cli?.bin ? 'Claude CLI not signed in' : 'Claude CLI not installed'}
+              </div>
+            </>
+          )}
+          <ThemeToggle />
         </div>
       </aside>
       <main className="main">{page}</main>
     </div>
+  );
+}
+
+// Auto follows the OS; Day and Evening pin a theme. Remembered on this machine.
+const THEMES = [
+  { id: 'auto', label: 'Auto theme', icon: 'auto' },
+  { id: 'light', label: 'Day theme', icon: 'sun' },
+  { id: 'dark', label: 'Evening theme', icon: 'moon' },
+];
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('alfred-theme') || 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  useEffect(() => {
+    if (theme === 'auto') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('alfred-theme', theme);
+    } catch {
+      // Storage unavailable; the choice just won't be remembered.
+    }
+  }, [theme]);
+  const i = Math.max(0, THEMES.findIndex((t) => t.id === theme));
+  const next = THEMES[(i + 1) % THEMES.length];
+  return (
+    <button className="theme-toggle" onClick={() => setTheme(next.id)} title={`Switch to ${next.label.toLowerCase()}`}>
+      <Icon name={THEMES[i].icon} /> {THEMES[i].label}
+    </button>
   );
 }

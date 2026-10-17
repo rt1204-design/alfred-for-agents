@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { Empty, Icon } from '../components/ui.jsx';
-import { fmtCost } from '../format.js';
+import { AgentAvatar, Art, Empty, Icon, staffHue } from '../components/ui.jsx';
+import { fmtAgo, fmtCost } from '../format.js';
 
 const FALLBACK_MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (default)' },
@@ -22,7 +22,7 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
 
   const statsFor = (id) => {
     const rs = runs.filter((r) => r.agentId === id);
-    return { count: rs.length, cost: rs.reduce((a, r) => a + (r.cost || 0), 0) };
+    return { count: rs.length, cost: rs.reduce((a, r) => a + (r.cost || 0), 0), last: rs[0]?.createdAt };
   };
 
   async function remove(a) {
@@ -35,8 +35,9 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
     <>
       <div className="page-head">
         <div>
+          <div className="eyebrow">Section iii<span className="sep" />Alfred’s staff</div>
           <h1>Agents</h1>
-          <p>Reusable Claude configurations: a model, a system prompt and the tools it may use.</p>
+          <p>Each one is a Claude with a role: a model, a standing brief and the tools it’s trusted with.</p>
         </div>
         <div className="spacer" />
         <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
@@ -45,45 +46,68 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
       <CliBanner health={health} usesApi={agents.some((a) => a.runner === 'api')} />
 
       {agents.length === 0 ? (
-        <div className="card"><Empty title="No agents yet">Create one to get started.</Empty></div>
+        <div className="card">
+          <Empty art="scene" title="No one on staff yet">
+            Take on your first agent and it will be ready for errands straight away.
+            <div style={{ marginTop: 14 }}>
+              <button className="btn primary" onClick={() => setEditing(BLANK)}><Icon name="plus" /> New agent</button>
+            </div>
+          </Empty>
+        </div>
       ) : (
         <div className="agent-grid">
-          {agents.map((a) => {
+          {agents.map((a, n) => {
             const st = statsFor(a.id);
+            const model = models.find((m) => m.id === a.model)?.label.replace(' (default)', '').replace(/^Claude /, '') || a.model;
             return (
-              <div className="card agent-card" key={a.id}>
-                <div className="row" style={{ gap: 12 }}>
-                  <div className="agent-avatar">{a.name.slice(0, 1).toUpperCase()}</div>
-                  <div style={{ minWidth: 0 }}>
+              <article className="staff-card" key={a.id} style={{ '--hue': staffHue(a, agents) }}>
+                <div className="staff-portrait">
+                  <span className="staff-no">No. {n + 1}</span>
+                  <Art name="robot" />
+                  <span className="chip staff-runner" title={a.runner === 'api' ? 'Billed per token with your API key' : 'Uses your Claude plan through the Claude Code CLI'}>
+                    {a.runner === 'api' ? 'API key' : 'Subscription'}
+                  </span>
+                </div>
+                <div className="staff-body">
+                  <div>
                     <h3>{a.name}</h3>
-                    <div className="cell-sub">{st.count} runs · {fmtCost(st.cost)}</div>
+                    <p className="role clamp">{a.description || a.systemPrompt || 'No description'}</p>
+                  </div>
+                  <div className="chips">
+                    <span className="chip strong">{model}</span>
+                    <span className="chip">{a.effort} effort</span>
+                    {a.webSearch && <span className="chip">web search</span>}
+                    {a.webFetch && <span className="chip">web fetch</span>}
+                    {a.runner !== 'api' && a.fileAccess && a.fileAccess !== 'none' && <span className="chip">files: {a.fileAccess}</span>}
+                    {a.runner !== 'api' && a.allowCommands && <span className="chip">commands</span>}
+                  </div>
+                  <div className="staff-record">
+                    <span><b>{st.count}</b> {st.count === 1 ? 'run' : 'runs'}</span>
+                    <span><b>{fmtCost(st.cost)}</b>{a.runner === 'api' ? '' : ' equiv.'}</span>
+                    {st.last && <span>last run {fmtAgo(st.last)}</span>}
                   </div>
                 </div>
-                <p className="clamp">{a.description || a.systemPrompt || 'No description'}</p>
-                <div className="chips">
-                  <span className="chip">{a.runner === 'api' ? 'API key' : 'Subscription (CLI)'}</span>
-                  <span className="chip">{models.find((m) => m.id === a.model)?.label.replace(' (default)', '') || a.model}</span>
-                  <span className="chip">effort: {a.effort}</span>
-                  {a.webSearch && <span className="chip">web search</span>}
-                  {a.webFetch && <span className="chip">web fetch</span>}
-                  {a.runner !== 'api' && a.fileAccess !== 'none' && <span className="chip">files: {a.fileAccess}</span>}
-                  {a.runner !== 'api' && a.allowCommands && <span className="chip">commands</span>}
-                </div>
                 <div className="actions">
-                  <button className="btn primary sm" onClick={() => setLaunching(a)}><Icon name="play" /> Run</button>
+                  <button className="btn primary sm" onClick={() => setLaunching(a)}><Icon name="play" /> Give a task</button>
                   <button className="btn sm" onClick={() => setEditing(a)}><Icon name="edit" /> Edit</button>
                   <div style={{ flex: 1 }} />
-                  <button className="btn sm ghost danger" onClick={() => remove(a)} aria-label="Delete agent"><Icon name="trash" /></button>
+                  <button className="btn sm ghost danger" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete agent"><Icon name="trash" /></button>
                 </div>
-              </div>
+              </article>
             );
           })}
+          <button className="hire-card" onClick={() => setEditing(BLANK)}>
+            <Art name="robot" />
+            <strong>Take on another agent</strong>
+            <span>A new role, model and set of tools</span>
+          </button>
         </div>
       )}
 
       {editing && (
         <AgentEditor
           agent={editing}
+          agents={agents}
           models={models}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); loadAgents(); }}
@@ -92,6 +116,7 @@ export default function Agents({ agents, loadAgents, runs, loadRuns, health }) {
       {launching && (
         <LaunchDialog
           agent={launching}
+          agents={agents}
           onClose={() => setLaunching(null)}
           onStarted={(id) => { setLaunching(null); loadRuns(); window.location.hash = `#/runs/${id}`; }}
         />
@@ -126,7 +151,7 @@ function CliBanner({ health, usesApi }) {
   );
 }
 
-function AgentEditor({ agent, models, onClose, onSaved }) {
+function AgentEditor({ agent, agents, models, onClose, onSaved }) {
   const [form, setForm] = useState({ ...BLANK, ...agent });
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -146,79 +171,87 @@ function AgentEditor({ agent, models, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="card modal" onSubmit={save}>
-        <h2>{agent.id ? 'Edit agent' : 'New agent'}</h2>
-        {error && <div className="alert error">{error}</div>}
-        <div className="form-grid">
-          <div className="field full">
-            <label>Name</label>
-            <input className="input" value={form.name} onChange={set('name')} required autoFocus />
+    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <form className="card modal" onSubmit={save} aria-labelledby="agent-editor-title">
+        <div className="modal-head">
+          <AgentAvatar agent={form.id ? form : { name: form.name || '?' }} agents={agents} size="lg" />
+          <div>
+            <h2 id="agent-editor-title">{agent.id ? `Edit ${agent.name}` : 'New agent'}</h2>
+            <p>{agent.id ? 'Changes apply to the next run.' : 'Give it a name, a role and the tools it may use.'}</p>
           </div>
-          <div className="field full">
-            <label>Description</label>
-            <input className="input" value={form.description} onChange={set('description')} placeholder="What this agent is for" />
-          </div>
-          <div className="field full">
-            <label>Runs on</label>
-            <select className="select" value={form.runner} onChange={set('runner')}>
-              <option value="cli">Claude subscription (Claude Code CLI)</option>
-              <option value="api">API key (billed per token)</option>
-            </select>
-            <span className="hint">
-              {form.runner === 'cli'
-                ? 'Uses your signed-in Claude Code CLI, so usage counts against your plan limits.'
-                : 'Calls the Claude API directly with ANTHROPIC_API_KEY from .env.'}
-            </span>
-          </div>
-          <div className="field">
-            <label>Model</label>
-            <select className="select" value={form.model} onChange={set('model')}>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              {!models.some((m) => m.id === form.model) && <option value={form.model}>{form.model}</option>}
-            </select>
-          </div>
-          <div className="field">
-            <label>Effort</label>
-            <select className="select" value={form.effort} onChange={set('effort')}>
-              {EFFORTS.map((x) => <option key={x} value={x}>{x}</option>)}
-            </select>
-            <span className="hint">Higher effort thinks longer and costs more.</span>
-          </div>
-          <div className="field full">
-            <label>System prompt</label>
-            <textarea className="textarea" rows={6} value={form.systemPrompt} onChange={set('systemPrompt')} placeholder="Describe the agent's role, how it should work, and what a good answer looks like." />
-          </div>
-          <div className="field">
-            <label>Tools</label>
-            <label className="check"><input type="checkbox" checked={form.webSearch} onChange={set('webSearch')} /> Web search</label>
-            <label className="check"><input type="checkbox" checked={form.webFetch} onChange={set('webFetch')} /> Web fetch (read URLs)</label>
-          </div>
-          {form.runner === 'cli' ? (
-            <>
-              <div className="field">
-                <label>Files</label>
-                <select className="select" value={form.fileAccess} onChange={set('fileAccess')}>
-                  <option value="none">No file access</option>
-                  <option value="read">Read files</option>
-                  <option value="edit">Read and edit files</option>
-                </select>
-                <label className="check"><input type="checkbox" checked={form.allowCommands} onChange={set('allowCommands')} /> Run shell commands</label>
-              </div>
-              <div className="field full">
-                <label>Working folder</label>
-                <input className="input mono" value={form.workDir} onChange={set('workDir')} placeholder="Leave empty for a private folder per agent (data/workspaces)" />
-                <span className="hint">
-                  The folder the agent works in. File and command access are pre-approved here, so only point it at folders you trust it with.
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="field">
-              <label>Max output tokens</label>
-              <input className="input" type="number" min={1024} max={128000} step={1024} value={form.maxTokens} onChange={set('maxTokens')} />
+        </div>
+        <div className="modal-body">
+          {error && <div className="alert error">{error}</div>}
+          <div className="form-grid">
+            <div className="field full">
+              <label htmlFor="ag-name">Name</label>
+              <input id="ag-name" className="input" value={form.name} onChange={set('name')} required autoFocus />
             </div>
-          )}
+            <div className="field full">
+              <label htmlFor="ag-desc">Description</label>
+              <input id="ag-desc" className="input" value={form.description} onChange={set('description')} placeholder="What this agent is for" />
+            </div>
+            <div className="field full">
+              <label htmlFor="ag-runner">Runs on</label>
+              <select id="ag-runner" className="select" value={form.runner} onChange={set('runner')}>
+                <option value="cli">Claude subscription (Claude Code CLI)</option>
+                <option value="api">API key (billed per token)</option>
+              </select>
+              <span className="hint">
+                {form.runner === 'cli'
+                  ? 'Uses your signed-in Claude Code CLI, so usage counts against your plan limits.'
+                  : 'Calls the Claude API directly with ANTHROPIC_API_KEY from .env.'}
+              </span>
+            </div>
+            <div className="field">
+              <label htmlFor="ag-model">Model</label>
+              <select id="ag-model" className="select" value={form.model} onChange={set('model')}>
+                {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                {!models.some((m) => m.id === form.model) && <option value={form.model}>{form.model}</option>}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="ag-effort">Effort</label>
+              <select id="ag-effort" className="select" value={form.effort} onChange={set('effort')}>
+                {EFFORTS.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select>
+              <span className="hint">Higher effort thinks longer and costs more.</span>
+            </div>
+            <div className="field full">
+              <label htmlFor="ag-prompt">System prompt</label>
+              <textarea id="ag-prompt" className="textarea" rows={6} value={form.systemPrompt} onChange={set('systemPrompt')} placeholder="Describe the agent's role, how it should work, and what a good answer looks like." />
+            </div>
+            <div className="field">
+              <label>Tools</label>
+              <label className="check"><input type="checkbox" checked={form.webSearch} onChange={set('webSearch')} /> Web search</label>
+              <label className="check"><input type="checkbox" checked={form.webFetch} onChange={set('webFetch')} /> Web fetch (read URLs)</label>
+            </div>
+            {form.runner === 'cli' ? (
+              <>
+                <div className="field">
+                  <label htmlFor="ag-files">Files</label>
+                  <select id="ag-files" className="select" value={form.fileAccess} onChange={set('fileAccess')}>
+                    <option value="none">No file access</option>
+                    <option value="read">Read files</option>
+                    <option value="edit">Read and edit files</option>
+                  </select>
+                  <label className="check"><input type="checkbox" checked={form.allowCommands} onChange={set('allowCommands')} /> Run shell commands</label>
+                </div>
+                <div className="field full">
+                  <label htmlFor="ag-dir">Working folder</label>
+                  <input id="ag-dir" className="input mono" value={form.workDir} onChange={set('workDir')} placeholder="Leave empty for a private folder per agent (data/workspaces)" />
+                  <span className="hint">
+                    The folder the agent works in. File and command access are pre-approved here, so only point it at folders you trust it with.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="field">
+                <label htmlFor="ag-max">Max output tokens</label>
+                <input id="ag-max" className="input" type="number" min={1024} max={128000} step={1024} value={form.maxTokens} onChange={set('maxTokens')} />
+              </div>
+            )}
+          </div>
         </div>
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -229,7 +262,7 @@ function AgentEditor({ agent, models, onClose, onSaved }) {
   );
 }
 
-function LaunchDialog({ agent, onClose, onStarted }) {
+function LaunchDialog({ agent, agents, onClose, onStarted }) {
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -248,20 +281,28 @@ function LaunchDialog({ agent, onClose, onStarted }) {
   }
 
   return (
-    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="card modal" onSubmit={go}>
-        <h2>Run {agent.name}</h2>
-        {error && <div className="alert error">{error}</div>}
-        <div className="field">
-          <label>Task</label>
-          <textarea
-            className="textarea" rows={6} autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)}
-            placeholder="What should the agent do?"
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) go(e); }}
-          />
-          <span className="hint">Ctrl+Enter to start</span>
+    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <form className="card modal" onSubmit={go} aria-labelledby="launch-title">
+        <div className="modal-head">
+          <AgentAvatar agent={agent} agents={agents} size="lg" />
+          <div>
+            <h2 id="launch-title">A task for {agent.name}</h2>
+            <p>{agent.description || 'Write it out as you would for a colleague.'}</p>
+          </div>
+        </div>
+        <div className="modal-body">
+          {error && <div className="alert error">{error}</div>}
+          <div className="field">
+            <label htmlFor="launch-task">Task</label>
+            <textarea
+              id="launch-task" className="textarea ruled" rows={6} autoFocus value={prompt} onChange={(e) => setPrompt(e.target.value)}
+              placeholder="What should the agent do?"
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) go(e); }}
+            />
+          </div>
         </div>
         <div className="modal-actions">
+          <span className="hint">Ctrl+Enter to start</span>
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn primary" disabled={busy || !prompt.trim()}><Icon name="play" /> Start run</button>
         </div>

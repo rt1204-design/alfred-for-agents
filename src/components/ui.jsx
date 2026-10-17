@@ -12,6 +12,9 @@ const paths = {
   edit: 'M4 20h4L19 9l-4-4L4 16v4z',
   back: 'M15 18l-6-6 6-6',
   send: 'M4 12l16-8-6 16-3-7-7-1z',
+  sun: 'M12 8a4 4 0 110 8 4 4 0 010-8zm0-5v2m0 14v2M3 12h2m14 0h2M5.6 5.6L7 7m10 10l1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4',
+  moon: 'M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z',
+  auto: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 0v18',
 };
 
 export function Icon({ name, className }) {
@@ -27,7 +30,7 @@ export function Icon({ name, className }) {
 
 export function Stat({ label, value, note }) {
   return (
-    <div className="card stat">
+    <div className="stat">
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
       {note && <div className="stat-note">{note}</div>}
@@ -57,12 +60,45 @@ export function Status({ status }) {
   );
 }
 
-export function Empty({ title, children }) {
+// One of Alfred's line drawings (see scripts/make-art.mjs), inked in the
+// theme's color: 'scene', 'bust', 'head', 'signature' or 'robot'.
+export function Art({ name, className = '', style }) {
+  return <span className={`art art-${name} ${className}`} style={style} aria-hidden="true" />;
+}
+
+// `art` adds a drawing above the message; `loading` shows a quiet note instead.
+export function Empty({ title, children, art, loading }) {
   return (
-    <div className="empty">
+    <div className={`empty ${loading ? 'loading' : ''}`}>
+      {art && <Art name={art} />}
       <h3>{title}</h3>
-      <div>{children}</div>
+      {children && <div>{children}</div>}
     </div>
+  );
+}
+
+export function Loading({ children = 'One moment…' }) {
+  return <Empty loading title={children} />;
+}
+
+// Each agent is a robot on Alfred's staff with its own ink color: by its place
+// on the staff when `agents` is given (so colors don't repeat), else from its
+// name. Accepts an agent or a run.
+export function staffHue(agent, agents) {
+  const id = agent?.agentId || agent?.id;
+  const i = agents ? agents.findIndex((a) => a.id === id) : -1;
+  if (i >= 0) return `var(--staff-${i % 6})`;
+  const key = agent?.agentName || agent?.name || id || '';
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `var(--staff-${h % 6})`;
+}
+
+export function AgentAvatar({ agent, agents, size }) {
+  return (
+    <span className={`agent-avatar ${size || ''}`} style={{ '--hue': staffHue(agent, agents) }} aria-hidden="true">
+      <Art name="robot" />
+    </span>
   );
 }
 
@@ -122,7 +158,7 @@ export function BarChart({ data, format, height = 220, label }) {
         {data.map((d, i) => {
           const x = pad.left + i * step + gap / 2;
           const h = Math.max(0, (d.value / max) * ih);
-          const r = Math.min(4, bw / 2, h);
+          const r = Math.min(2, bw / 2, h);
           const top = pad.top + ih - h;
           return (
             <g key={d.key}>
