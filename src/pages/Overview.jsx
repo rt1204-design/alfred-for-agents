@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { BarChart, Empty, HBars, Icon, Segmented, Stat, Status } from '../components/ui.jsx';
+import { AgentAvatar, Art, BarChart, Empty, HBars, Icon, Loading, Segmented, Stat, Status } from '../components/ui.jsx';
 import { dayKey, fmtAgo, fmtCost, fmtNum, fmtTokens, totalTokens } from '../format.js';
 
 const RANGES = [
-  { value: 7, label: '7d' },
-  { value: 30, label: '30d' },
-  { value: 90, label: '90d' },
+  { value: 7, label: '7 days' },
+  { value: 30, label: '30 days' },
+  { value: 90, label: '90 days' },
 ];
 const METRICS = [
   { value: 'cost', label: 'Est. cost', get: (d) => d.cost, fmt: (v) => fmtCost(v) },
@@ -46,6 +46,20 @@ function useRangeData(summary, range) {
   }, [summary, range]);
 }
 
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+
+const plural = (n, one, many = `${one}s`) => `${fmtNum(n)} ${n === 1 ? one : many}`;
+const shortWhen = (ts) => {
+  if (!ts) return '–';
+  const d = new Date(ts);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 export default function Overview({ summary, summaryError, loadingSummary, loadSummary, runs, agents }) {
   const [range, setRange] = useState(30);
   const [metric, setMetric] = useState('cost');
@@ -60,31 +74,50 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
     value: m.get(data),
     extra: [`${data.sessions} session${data.sessions === 1 ? '' : 's'} started`, `${fmtNum(data.prompts)} prompts`],
   }));
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <>
-      <div className="page-head">
+      <section className="hero">
         <div>
-          <h1>Overview</h1>
-          <p>Claude Code activity on this machine, plus the agents you run from here.</p>
+          <div className="eyebrow">{today}<span className="sep" />The day’s account</div>
+          <h1>{greeting()}.</h1>
+          <p className="hero-lede">
+            {!r ? (
+              'I’m reading through your Claude Code logs now.'
+            ) : r.sessions.length === 0 ? (
+              <>A quiet {range} days: no Claude Code sessions to report.</>
+            ) : (
+              <>
+                Over the last {range} days you kept <b>{plural(r.sessions.length, 'Claude Code session')}</b>, which
+                got through <b>{fmtTokens(r.tokens)} tokens</b> and <b>{plural(r.toolCalls, 'tool call')}</b>. At API list
+                prices that would come to about <b>{fmtCost(r.cost)}</b>.
+              </>
+            )}
+            {agents.length > 0 && (
+              <> Your staff of {agents.length} {agents.length === 1 ? 'agent has' : 'agents have'} handled {plural(runs.length, 'run')}.</>
+            )}
+          </p>
+          <div className="hero-controls">
+            <Segmented options={RANGES} value={range} onChange={setRange} />
+            <button className="btn" onClick={() => loadSummary(true)} disabled={loadingSummary}>
+              <Icon name="refresh" className={loadingSummary ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
         </div>
-        <div className="spacer" />
-        <Segmented options={RANGES} value={range} onChange={setRange} />
-        <button className="btn" onClick={() => loadSummary(true)} disabled={loadingSummary}>
-          <Icon name="refresh" className={loadingSummary ? 'spin' : ''} /> Refresh
-        </button>
-      </div>
+        <Art name="scene" className="hero-art" />
+      </section>
 
       {summaryError && <div className="alert error"><strong>Couldn't read Claude Code logs:</strong> {summaryError}</div>}
 
       {!r ? (
-        <div className="card"><Empty title="Loading…">Reading Claude Code session logs.</Empty></div>
+        <div className="card"><Loading>Reading the session logs…</Loading></div>
       ) : (
         <div className="stack">
           <div className="grid kpis">
-            <Stat label="Claude Code sessions" value={fmtNum(r.sessions.length)} note={`active in the last ${range} days`} />
-            <Stat label="Est. Claude Code cost" value={fmtCost(r.cost)} note="at API list prices" />
-            <Stat label="Tokens processed" value={fmtTokens(r.tokens)} note={`${fmtNum(r.prompts)} prompts`} />
+            <Stat label="Sessions" value={fmtNum(r.sessions.length)} note={`active in the last ${range} days`} />
+            <Stat label="Est. cost" value={fmtCost(r.cost)} note="at API list prices" />
+            <Stat label="Tokens processed" value={fmtTokens(r.tokens)} note={`across ${plural(r.prompts, 'prompt')}`} />
             <Stat label="Tool calls" value={fmtNum(r.toolCalls)} note={`${Object.keys(r.tools).length} distinct tools`} />
           </div>
 
@@ -100,7 +133,7 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
               </div>
             </div>
             <div className="card">
-              <div className="card-head"><h2>Top tools</h2><span className="sub">calls</span></div>
+              <div className="card-head"><h2>Most-used tools</h2><span className="sub">calls</span></div>
               <div className="card-body">
                 <HBars items={Object.entries(r.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} />
               </div>
@@ -110,32 +143,32 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
           <div className="grid halves">
             <div className="card">
               <div className="card-head">
-                <h2>Recent Claude Code sessions</h2>
+                <h2>Recent sessions</h2>
+                <span className="sub">Claude Code</span>
                 <div className="spacer" />
-                <a href="#/sessions" className="btn sm ghost">View all</a>
+                <a href="#/sessions" className="btn link">All sessions →</a>
               </div>
-              <div className="card-body" style={{ paddingTop: 6 }}>
-                {r.sessions.length === 0 ? (
-                  <Empty title="No sessions in this range" />
-                ) : (
-                  <table>
-                    <tbody>
-                      {r.sessions.slice(0, 6).map((s) => (
-                        <tr key={s.id} className="clickable" onClick={() => (window.location.hash = `#/sessions/${s.id}`)}>
-                          <td style={{ paddingLeft: 0 }}>
-                            <div className="cell-title clamp">{s.title || s.firstPrompt || 'Untitled session'}</div>
-                            <div className="cell-sub">{s.project} · {fmtAgo(s.end)}</div>
-                          </td>
-                          <td className="num" style={{ paddingRight: 0 }}>
-                            <div>{fmtCost(s.cost)}</div>
-                            <div className="cell-sub">{fmtTokens(s.totalTokens)} tok</div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              {r.sessions.length === 0 ? (
+                <Empty art="bust" title="Nothing in the book yet">Sessions you run in Claude Code will be entered here.</Empty>
+              ) : (
+                <ul className="entries">
+                  {r.sessions.slice(0, 6).map((s) => (
+                    <li key={s.id}>
+                      <a className="entry" href={`#/sessions/${s.id}`}>
+                        <div className="entry-when">{shortWhen(s.end)}</div>
+                        <div>
+                          <div className="cell-title clamp">{s.title || s.firstPrompt || 'Untitled session'}</div>
+                          <div className="cell-sub">{s.project} · {fmtAgo(s.end)}</div>
+                        </div>
+                        <div className="entry-figs">
+                          <div>{fmtCost(s.cost)}</div>
+                          <div className="cell-sub">{fmtTokens(s.totalTokens)} tok</div>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="card">
@@ -143,32 +176,33 @@ export default function Overview({ summary, summaryError, loadingSummary, loadSu
                 <h2>Agent runs</h2>
                 <span className="sub">{agents.length} agents · {fmtCost(agentCost)} total</span>
                 <div className="spacer" />
-                <a href="#/runs" className="btn sm ghost">View all</a>
+                <a href="#/runs" className="btn link">All runs →</a>
               </div>
-              <div className="card-body" style={{ paddingTop: 6 }}>
-                {runs.length === 0 ? (
-                  <Empty title="No runs yet">
-                    <a href="#/agents">Pick an agent</a> and give it a task.
-                  </Empty>
-                ) : (
-                  <table>
-                    <tbody>
-                      {runs.slice(0, 6).map((x) => (
-                        <tr key={x.id} className="clickable" onClick={() => (window.location.hash = `#/runs/${x.id}`)}>
-                          <td style={{ paddingLeft: 0 }}>
-                            <div className="cell-title clamp">{x.preview}</div>
-                            <div className="cell-sub">{x.agentName} · {fmtAgo(x.createdAt)}</div>
-                          </td>
-                          <td className="num" style={{ paddingRight: 0 }}>
-                            <Status status={x.status} />
-                            <div className="cell-sub">{fmtCost(x.cost)} · {fmtTokens(totalTokens(x.usage))} tok</div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              {runs.length === 0 ? (
+                <Empty art="robot" title="The staff are idle">
+                  <a href="#/agents">Choose an agent</a> and give it a task.
+                </Empty>
+              ) : (
+                <ul className="entries">
+                  {runs.slice(0, 6).map((x) => (
+                    <li key={x.id}>
+                      <a className="entry" href={`#/runs/${x.id}`}>
+                        <div className="entry-when">{shortWhen(x.createdAt)}</div>
+                        <div>
+                          <div className="cell-title clamp">{x.preview}</div>
+                          <div className="cell-sub row" style={{ gap: 6 }}>
+                            <AgentAvatar agent={x} agents={agents} size="xs" />{x.agentName} · {fmtAgo(x.createdAt)}
+                          </div>
+                        </div>
+                        <div className="entry-figs">
+                          <Status status={x.status} />
+                          <div className="cell-sub">{fmtCost(x.cost)} · {fmtTokens(totalTokens(x.usage))} tok</div>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
