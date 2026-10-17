@@ -263,7 +263,11 @@ function Block({ b, live }) {
           <b>{b.content.length} results</b>
           <ul>
             {b.content.slice(0, 6).map((r) => (
-              <li key={r.url}><a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a></li>
+              <li key={r.url}>
+                {/^https?:\/\//i.test(r.url || '')
+                  ? <a href={r.url} target="_blank" rel="noreferrer">{r.title || r.url}</a>
+                  : r.title || r.url}
+              </li>
             ))}
           </ul>
         </div>
