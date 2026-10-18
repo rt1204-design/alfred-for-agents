@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Robot } from './Robot.jsx';
 
 const paths = {
   overview: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z',
@@ -60,47 +61,28 @@ export function Status({ status }) {
   );
 }
 
-// One of Alfred's line drawings (see scripts/make-art.mjs), inked in the
-// theme's color: 'scene', 'bust', 'head', 'signature' or 'robot'.
+// Alfred's hand-drawn head or signature (see scripts/make-art.mjs), inked in
+// the theme's color.
 export function Art({ name, className = '', style }) {
   return <span className={`art art-${name} ${className}`} style={style} aria-hidden="true" />;
 }
 
-// `art` adds a drawing above the message; `loading` shows a quiet note instead.
-export function Empty({ title, children, art, loading }) {
+// Why the view is empty and what to do next. `robot` adds a small portrait.
+export function Empty({ title, children, robot, loading }) {
   return (
     <div className={`empty ${loading ? 'loading' : ''}`}>
-      {art && <Art name={art} />}
+      {robot && <span className="agent-avatar lg"><Robot /></span>}
       <h3>{title}</h3>
       {children && <div>{children}</div>}
     </div>
   );
 }
 
-export function Loading({ children = 'One moment…' }) {
+export function Loading({ children = 'Loading…' }) {
   return <Empty loading title={children} />;
 }
 
-// Each agent is a robot on Alfred's staff with its own ink color: by its place
-// on the staff when `agents` is given (so colors don't repeat), else from its
-// name. Accepts an agent or a run.
-export function staffHue(agent, agents) {
-  const id = agent?.agentId || agent?.id;
-  const i = agents ? agents.findIndex((a) => a.id === id) : -1;
-  if (i >= 0) return `var(--staff-${i % 6})`;
-  const key = agent?.agentName || agent?.name || id || '';
-  let h = 0;
-  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `var(--staff-${h % 6})`;
-}
-
-export function AgentAvatar({ agent, agents, size }) {
-  return (
-    <span className={`agent-avatar ${size || ''}`} style={{ '--hue': staffHue(agent, agents) }} aria-hidden="true">
-      <Art name="robot" />
-    </span>
-  );
-}
+export { AgentAvatar } from './Robot.jsx';
 
 // Horizontal bar list for ranked counts (top tools, models).
 export function HBars({ items, format = (v) => v.toLocaleString(), limit = 8 }) {

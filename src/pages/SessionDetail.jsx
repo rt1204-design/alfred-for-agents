@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { Empty, HBars, Icon, Loading, Stat } from '../components/ui.jsx';
-import { fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens } from '../format.js';
+import { fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens, toolLabel } from '../format.js';
 
 export default function SessionDetail({ id }) {
   const [data, setData] = useState(null);
@@ -46,7 +46,7 @@ export default function SessionDetail({ id }) {
             <section className="card">
               <div className="card-head"><h2>Tools used</h2><span className="sub">calls</span></div>
               <div className="card-body">
-                <HBars items={Object.entries(s.tools).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)} limit={10} />
+                <HBars items={Object.entries(s.tools).map(([name, value]) => ({ label: toolLabel(name), value })).sort((a, b) => b.value - a.value)} limit={10} />
               </div>
             </section>
           )}
