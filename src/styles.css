@@ -260,6 +260,32 @@ td.wrap { overflow-wrap: anywhere; max-width: 220px; }
 .entry:hover { background: var(--surface-2); }
 .entry.with-avatar { grid-template-columns: 64px 28px minmax(0, 1fr) auto; }
 .entry-when { font-size: var(--text-sm); color: var(--muted); padding-top: 1px; }
+/* A list row with an action button beside the link; the button shows on hover or focus. */
+.entry-row { display: flex; align-items: center; gap: var(--s-1); }
+.entry-row > .entry { flex: 1; min-width: 0; }
+.row-action { opacity: 0; transition: opacity 0.12s; flex: none; }
+.entry-row:hover .row-action, tr:hover .row-action, .row-action:focus-visible, .row-action.shown { opacity: 1; }
+.row-actions { display: flex; gap: var(--s-1); flex: none; }
+@media (hover: none) { .row-action { opacity: 1; } }
+
+/* Undo notice, bottom center */
+.notice {
+  position: fixed; left: 50%; bottom: var(--s-5); transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: var(--s-3);
+  background: var(--ink); color: var(--page); padding: 8px 8px 8px 16px; border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); font-size: var(--text-sm); max-width: calc(100vw - 32px);
+}
+.notice .btn { background: transparent; color: inherit; border-color: color-mix(in srgb, var(--page) 35%, transparent); }
+.notice .btn.ghost { border-color: transparent; }
+.notice .btn:hover { background: color-mix(in srgb, var(--page) 14%, transparent); color: inherit; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* History */
+.history-section { margin-bottom: var(--s-7); }
+.history-section .section-head { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+.history-note { color: var(--muted); font-size: var(--text-sm); margin: 0 0 var(--s-5); max-width: 70ch; }
+.cleared-banner { display: flex; align-items: center; gap: var(--s-3); }
 .entry-figs { text-align: right; font-size: var(--text-sm); color: var(--ink-2); white-space: nowrap; }
 
 /* ---- Chips / status ---- */

@@ -16,6 +16,9 @@ const paths = {
   sun: 'M12 8a4 4 0 110 8 4 4 0 010-8zm0-5v2m0 14v2M3 12h2m14 0h2M5.6 5.6L7 7m10 10l1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4',
   moon: 'M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z',
   auto: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 0v18',
+  clear: 'M6 6l12 12M18 6L6 18',
+  history: 'M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5M12 7v5l3 3',
+  undo: 'M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3',
 };
 
 export function Icon({ name, className }) {
@@ -80,6 +83,41 @@ export function Empty({ title, children, robot, loading }) {
 
 export function Loading({ children = 'Loading…' }) {
   return <Empty loading title={children} />;
+}
+
+// A short-lived message at the bottom of the window, with an optional Undo.
+// It stays put while the pointer is over it or one of its buttons has focus.
+export function Notice({ notice, onClose }) {
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    if (!notice || paused) return;
+    const t = setTimeout(onClose, 10000);
+    return () => clearTimeout(t);
+  }, [notice, paused, onClose]);
+  if (!notice) return null;
+  const hold = () => setPaused(true);
+  const release = () => setPaused(false);
+  return (
+    <div className="notice" role="status" onMouseEnter={hold} onMouseLeave={release} onFocus={hold} onBlur={release}>
+      <span>{notice.text}</span>
+      {notice.undo && (
+        <button className="btn sm" onClick={async () => { onClose(); await notice.undo(); }}>
+          <Icon name="undo" /> Undo
+        </button>
+      )}
+      <button className="btn sm ghost" onClick={onClose} aria-label="Dismiss"><Icon name="clear" /></button>
+    </div>
+  );
+}
+
+// A row in a list whose main area is a link, with a small action on the right.
+export function EntryRow({ href, children, action }) {
+  return (
+    <li className="entry-row">
+      <a className="entry with-avatar" href={href}>{children}</a>
+      {action}
+    </li>
+  );
 }
 
 export { AgentAvatar } from './Robot.jsx';

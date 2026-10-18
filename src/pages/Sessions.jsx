@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { api } from '../api.js';
 import { Empty, Icon, Loading } from '../components/ui.jsx';
 import { fmtAgo, fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens } from '../format.js';
 
@@ -9,7 +10,17 @@ const SORTS = {
   tools: (a, b) => b.toolCalls - a.toolCalls,
 };
 
-export default function Sessions({ summary, summaryError, loadingSummary, loadSummary }) {
+// Clear sessions from Alfred (Claude Code's own logs are untouched) and offer an Undo.
+export async function clearSessions(ids, { loadSummary, notify }) {
+  const { cleared } = await api.clearSessions(ids);
+  await loadSummary();
+  notify(
+    `Cleared ${cleared} session${cleared === 1 ? '' : 's'} from Alfred. Find ${cleared === 1 ? 'it' : 'them'} in History.`,
+    async () => { await api.restoreSessions(ids); await loadSummary(); },
+  );
+}
+
+export default function Sessions({ summary, summaryError, loadingSummary, loadSummary, notify }) {
   const [q, setQ] = useState('');
   const [project, setProject] = useState('');
   const [sort, setSort] = useState('recent');
@@ -26,6 +37,16 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
       .sort(SORTS[sort]);
   }, [summary, q, project, sort]);
   const totalCost = rows.reduce((a, s) => a + (s.cost || 0), 0);
+  const filtered = !!(q.trim() || project);
+
+  async function clearShown() {
+    const n = rows.length;
+    const msg = filtered
+      ? `Clear the ${n} session${n === 1 ? '' : 's'} matching this filter from Alfred?`
+      : `Clear all ${n} sessions from Alfred?`;
+    if (!confirm(`${msg} Claude Code's own logs aren't touched, and you can restore them from History.`)) return;
+    await clearSessions(rows.map((s) => s.id), { loadSummary, notify });
+  }
 
   return (
     <>
@@ -35,6 +56,11 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
           <p>Every conversation Claude Code has logged on this machine.</p>
         </div>
         <div className="spacer" />
+        {rows.length > 0 && (
+          <button className="btn ghost" onClick={clearShown}>
+            <Icon name="clear" /> {filtered ? `Clear shown (${rows.length})` : 'Clear all'}
+          </button>
+        )}
         <button className="btn" onClick={() => loadSummary(true)} disabled={loadingSummary}>
           <Icon name="refresh" className={loadingSummary ? 'spin' : ''} /> Refresh
         </button>
@@ -76,6 +102,7 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
                   <th className="num">Est. cost</th>
                   <th className="num col-wide">Duration</th>
                   <th className="num">Last active</th>
+                  <th><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -96,6 +123,14 @@ export default function Sessions({ summary, summaryError, loadingSummary, loadSu
                     <td className="num strong">{fmtCost(s.cost)}</td>
                     <td className="num col-wide">{fmtDuration(s.start, s.end)}</td>
                     <td className="num" title={fmtDate(s.end)}>{fmtAgo(s.end)}</td>
+                    <td className="num" style={{ width: 1 }}>
+                      <button
+                        className="btn sm ghost row-action" aria-label="Clear session" title="Clear from Alfred (moves to History)"
+                        onClick={(e) => { e.stopPropagation(); clearSessions([s.id], { loadSummary, notify }); }}
+                      >
+                        <Icon name="clear" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

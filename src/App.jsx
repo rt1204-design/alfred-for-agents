@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
-import { Art, Icon } from './components/ui.jsx';
+import { Art, Icon, Notice } from './components/ui.jsx';
+import History from './pages/History.jsx';
 import Overview from './pages/Overview.jsx';
 import Sessions from './pages/Sessions.jsx';
 import SessionDetail from './pages/SessionDetail.jsx';
@@ -25,7 +26,12 @@ export default function App() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [agents, setAgents] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [clearedRuns, setClearedRuns] = useState([]);
   const [health, setHealth] = useState(null);
+  const [notice, setNotice] = useState(null);
+  // Show a brief message; pass `undo` to offer an Undo button.
+  const notify = useCallback((text, undo) => setNotice({ text, undo, at: Date.now() }), []);
+  const closeNotice = useCallback(() => setNotice(null), []);
 
   const loadSummary = useCallback(async (refresh) => {
     setLoadingSummary(true);
@@ -39,7 +45,11 @@ export default function App() {
     }
   }, []);
   const loadAgents = useCallback(() => api.agents().then(setAgents).catch(() => {}), []);
-  const loadRuns = useCallback(() => api.runs().then(setRuns).catch(() => {}), []);
+  // Both lists at once, so clearing or restoring updates Runs and History together.
+  const loadRuns = useCallback(
+    () => Promise.all([api.runs(), api.clearedRuns()]).then(([r, c]) => { setRuns(r); setClearedRuns(c); }).catch(() => {}),
+    [],
+  );
 
   useEffect(() => {
     loadSummary();
@@ -55,13 +65,14 @@ export default function App() {
   }, [loadSummary]);
 
   const section = route[0] || 'overview';
-  const ctx = { summary, summaryError, loadingSummary, loadSummary, agents, loadAgents, runs, loadRuns, health };
+  const ctx = { summary, summaryError, loadingSummary, loadSummary, agents, loadAgents, runs, clearedRuns, loadRuns, health, notify };
 
   let page;
-  if (section === 'sessions' && route[1]) page = <SessionDetail id={route[1]} />;
+  if (section === 'sessions' && route[1]) page = <SessionDetail id={route[1]} {...ctx} />;
   else if (section === 'sessions') page = <Sessions {...ctx} />;
   else if (section === 'agents') page = <Agents {...ctx} />;
   else if (section === 'runs') page = <Runs {...ctx} runId={route[1]} />;
+  else if (section === 'history') page = <History {...ctx} />;
   else page = <Overview {...ctx} />;
 
   const running = runs.filter((r) => r.status === 'running').length;
@@ -70,6 +81,7 @@ export default function App() {
     { id: 'sessions', label: 'Claude Code', href: '#/sessions', count: summary?.sessions.length },
     { id: 'agents', label: 'Agents', href: '#/agents', count: agents.length },
     { id: 'runs', label: 'Runs', href: '#/runs', count: running ? `${running} live` : runs.length, live: running > 0 },
+    { id: 'history', label: 'History', href: '#/history', count: clearedRuns.length + (summary?.cleared?.length || 0) || null },
   ];
   const cli = health?.cli;
 
@@ -106,6 +118,7 @@ export default function App() {
         </div>
       </aside>
       <main className="main">{page}</main>
+      <Notice key={notice?.at} notice={notice} onClose={closeNotice} />
     </div>
   );
 }

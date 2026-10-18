@@ -46,6 +46,14 @@ const evil = [
 ];
 fs.writeFileSync(path.join(projectsDir, 'demo-project', 'evil.jsonl'), evil.map((l) => JSON.stringify(l)).join('\n'));
 
+// Two finished runs for the clear/restore/delete tests (no CLI needed).
+fs.mkdirSync(dataDir, { recursive: true });
+const fakeRun = (id, createdAt) => ({
+  id, agentId: 'x', agentName: 'Tester', config: {}, runner: 'cli', model: 'claude-haiku-5-5', status: 'completed',
+  createdAt, updatedAt: createdAt, messages: [{ role: 'user', content: `task ${id}` }], usage: {}, cost: 0, apiCalls: 0,
+});
+fs.writeFileSync(path.join(dataDir, 'runs.json'), JSON.stringify([fakeRun('run-a', '2026-10-01T00:00:00.000Z'), fakeRun('run-b', '2026-10-02T00:00:00.000Z')]));
+
 process.env.DATA_DIR = dataDir;
 process.env.CLAUDE_PROJECTS_DIR = projectsDir;
 const { startServer } = await import('../server/index.js');
@@ -349,5 +357,74 @@ describe('desktop app hardening config', () => {
     assert.match(main, /nodeIntegration: false/);
     assert.match(main, /protocol === 'https:' \|\| protocol === 'http:'/);
     assert.match(main, /setPermissionRequestHandler/);
+  });
+});
+
+describe('clearing runs and History', () => {
+  const ids = async (q = '') => (await req('GET', `/api/runs${q}`)).json.map((r) => r.id);
+
+  test('clear hides a run from Runs and lists it in History', async () => {
+    assert.deepEqual(await ids(), ['run-b', 'run-a']);
+    const r = await req('POST', '/api/runs/clear', { headers: app(), body: { ids: ['run-a'] } });
+    assert.deepEqual(r.json, { cleared: 1, skipped: 0 });
+    assert.deepEqual(await ids(), ['run-b']);
+    const history = (await req('GET', '/api/runs?cleared=1')).json;
+    assert.deepEqual(history.map((x) => x.id), ['run-a']);
+    assert.ok(history[0].clearedAt);
+    assert.ok((await req('GET', '/api/runs/run-a')).json.clearedAt, 'a cleared run can still be opened');
+  });
+
+  test('only cleared runs can be deleted for good', async () => {
+    assert.equal((await req('DELETE', '/api/runs/run-b', { headers: app() })).status, 409);
+    assert.deepEqual((await req('POST', '/api/runs/delete', { headers: app(), body: { ids: ['run-b'] } })).json, { deleted: 0 });
+    assert.deepEqual(await ids(), ['run-b']);
+  });
+
+  test('restore brings a run back; delete removes a cleared one', async () => {
+    assert.deepEqual((await req('POST', '/api/runs/restore', { headers: app(), body: { ids: ['run-a'] } })).json, { restored: 1 });
+    assert.deepEqual(await ids(), ['run-b', 'run-a']);
+    await req('POST', '/api/runs/clear', { headers: app(), body: { ids: ['run-a'] } });
+    assert.equal((await req('DELETE', '/api/runs/run-a', { headers: app() })).status, 204);
+    assert.deepEqual(await ids('?cleared=1'), []);
+    assert.equal((await req('GET', '/api/runs/run-a')).status, 404);
+  });
+
+  test('rejects malformed ID lists and still needs the app header', async () => {
+    for (const body of [{}, { ids: 'run-b' }, { ids: [1, 2] }, { ids: [{}] }, { ids: ['x'.repeat(500)] }]) {
+      assert.equal((await req('POST', '/api/runs/clear', { headers: app(), body })).status, 400, JSON.stringify(body));
+    }
+    assert.equal((await req('POST', '/api/runs/clear', { body: { ids: ['run-b'] } })).status, 403);
+    assert.equal((await req('POST', '/api/claude-code/sessions/clear', { body: { ids: [SID] } })).status, 403);
+  });
+});
+
+describe('clearing Claude Code sessions', () => {
+  const logFile = path.join(projectsDir, 'demo-project', `${SID}.jsonl`);
+
+  test('a cleared session leaves the lists and totals but its log is untouched', async () => {
+    const logBefore = fs.readFileSync(logFile, 'utf8');
+    const before = (await req('GET', '/api/claude-code/summary?refresh=1')).json;
+    const costBefore = before.daily.reduce((a, d) => a + d.cost, 0);
+    assert.ok(before.sessions.some((s) => s.id === SID));
+
+    assert.deepEqual((await req('POST', '/api/claude-code/sessions/clear', { headers: app(), body: { ids: [SID] } })).json, { cleared: 1 });
+    const after = (await req('GET', '/api/claude-code/summary')).json;
+    assert.ok(!after.sessions.some((s) => s.id === SID));
+    assert.deepEqual(after.cleared.map((s) => s.id), [SID]);
+    assert.ok(after.daily.reduce((a, d) => a + d.cost, 0) < costBefore, 'its cost no longer counts');
+    assert.equal(fs.readFileSync(logFile, 'utf8'), logBefore, 'Claude Code log file unchanged');
+
+    const detail = (await req('GET', `/api/claude-code/sessions/${SID}`)).json;
+    assert.equal(detail.session, null);
+    assert.equal(detail.cleared.id, SID);
+  });
+
+  test('restore puts it back and updates the saved list', async () => {
+    assert.deepEqual((await req('POST', '/api/claude-code/sessions/restore', { headers: app(), body: { ids: [SID] } })).json, { restored: 1 });
+    const s = (await req('GET', '/api/claude-code/summary')).json;
+    assert.ok(s.sessions.some((x) => x.id === SID));
+    assert.deepEqual(s.cleared, []);
+    const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'cleared-sessions.json'), 'utf8'));
+    assert.deepEqual(saved, {});
   });
 });
