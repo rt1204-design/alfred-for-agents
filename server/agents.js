@@ -21,6 +21,15 @@ const FALLBACK_MODELS = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-
 // Models that support the dynamic-filtering web tool variants.
 const NEW_WEB_TOOLS = /claude-(opus-(5|4-[678])|sonnet-(5|4-6))/;
 const MAX_CONTINUATIONS = 10;
+export const MAX_SYSTEM_PROMPT = 20000;
+
+// An error whose message is safe to show the user, with an HTTP status.
+export class UserError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
 
 const SEED_AGENTS = [
   {
@@ -119,13 +128,14 @@ function cleanAgent(input) {
     // Model IDs are plain slugs (claude-opus-5-5, optionally with a [1m] suffix); anything else falls back.
     model: typeof input.model === 'string' && /^[a-z0-9][a-z0-9.-]*(\[1m\])?$/i.test(input.model) ? input.model : 'claude-opus-5-5',
     effort,
-    systemPrompt: String(input.systemPrompt || ''),
+    // Passed on the command line, which Windows caps at ~32,000 characters in total.
+    systemPrompt: String(input.systemPrompt || '').slice(0, MAX_SYSTEM_PROMPT),
     webSearch: !!input.webSearch,
     webFetch: !!input.webFetch,
     // CLI only: what the agent may do on disk, and where.
     fileAccess: ['none', 'read', 'edit'].includes(input.fileAccess) ? input.fileAccess : 'none',
     allowCommands: !!input.allowCommands,
-    workDir: String(input.workDir || '').trim(),
+    workDir: String(input.workDir || '').trim().slice(0, 1000),
     maxTokens: Math.min(Math.max(Number(input.maxTokens) || 64000, 1024), 128000),
   };
 }
@@ -197,7 +207,7 @@ export function stopRun(id) {
 
 export async function startRun(agentId, prompt) {
   const agent = getAgent(agentId);
-  if (!agent) throw new Error('Agent not found');
+  if (!agent) throw new UserError(404, 'Agent not found');
   const now = new Date().toISOString();
   const run = {
     id: randomUUID(),
@@ -228,10 +238,10 @@ export async function startRun(agentId, prompt) {
 // Add a follow-up prompt, or with no prompt retry a run whose last turn failed.
 export async function continueRun(id, prompt) {
   const run = getRun(id);
-  if (!run) throw new Error('Run not found');
-  if (live.has(id)) throw new Error('Run is still in progress');
+  if (!run) throw new UserError(404, 'Run not found');
+  if (live.has(id)) throw new UserError(409, 'Run is still in progress');
   if (prompt) run.messages.push({ role: 'user', content: prompt });
-  else if (run.messages.at(-1)?.role !== 'user') throw new Error('Nothing to retry');
+  else if (run.messages.at(-1)?.role !== 'user') throw new UserError(409, 'Nothing to retry');
   run.status = 'running';
   run.error = null;
   run.updatedAt = new Date().toISOString();

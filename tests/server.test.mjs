@@ -32,6 +32,20 @@ const lines = [
 ];
 fs.writeFileSync(path.join(projectsDir, 'demo-project', `${SID}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n{not json\n');
 
+// A hostile transcript (pentest LOW-1): wrong types everywhere, prototype-named
+// tools and string token counts. Parsing it must neither crash nor corrupt totals.
+const EVIL = 'evil-session';
+const evil = [
+  { sessionId: EVIL, type: 'assistant', timestamp: '2026-10-02T00:00:00Z', message: { content: 5 } },
+  { sessionId: EVIL, type: 'assistant', timestamp: 12345, message: { id: 'm1', model: {}, usage: { output_tokens: '999', input_tokens: -5 }, content: [{ type: 'tool_use', name: '__proto__' }, { type: 'tool_use', name: 'constructor' }, { type: 'tool_use', name: { x: 1 } }, null, 7] } },
+  { sessionId: EVIL, type: 'assistant', timestamp: '2026-10-02T00:00:01Z', message: { content: [{ type: 'text', text: { toString: 1 } }, { type: 'tool_use', name: 'Bash', input: null }] } },
+  { sessionId: EVIL, type: 'user', timestamp: '2026-10-02T00:00:02Z', origin: 'x', message: { content: [{ type: 'tool_result', is_error: true, content: 9 }] } },
+  { sessionId: { not: 'a string' }, type: 'user', message: { content: 'ignored' } },
+  ['an', 'array'],
+  'just a string',
+];
+fs.writeFileSync(path.join(projectsDir, 'demo-project', 'evil.jsonl'), evil.map((l) => JSON.stringify(l)).join('\n'));
+
 process.env.DATA_DIR = dataDir;
 process.env.CLAUDE_PROJECTS_DIR = projectsDir;
 const { startServer } = await import('../server/index.js');
@@ -121,6 +135,16 @@ describe('request guard', () => {
     }
   });
 
+  test('rejects reads from other websites, including no-cors probes (pentest INFO-1)', async () => {
+    assert.equal((await req('GET', '/api/health', { headers: { Origin: 'https://evil.example.com' } })).status, 403);
+    for (const site of ['cross-site', 'same-site']) {
+      assert.equal((await req('GET', '/api/health', { headers: { 'Sec-Fetch-Site': site } })).status, 403, site);
+    }
+    for (const site of ['same-origin', 'none']) {
+      assert.equal((await req('GET', '/api/health', { headers: { 'Sec-Fetch-Site': site } })).status, 200, site);
+    }
+  });
+
   test('never grants CORS', async () => {
     const pre = await req('OPTIONS', '/api/agents', {
       headers: { Origin: 'https://evil.example.com', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'x-alfred' },
@@ -141,6 +165,19 @@ describe('security headers', () => {
     assert.match(csp, /object-src 'none'/);
     assert.equal(r.headers['x-content-type-options'], 'nosniff');
     assert.equal(r.headers['x-frame-options'], 'DENY');
+    assert.doesNotMatch(csp, /https?:/, 'no outside origins: fonts are bundled');
+  });
+
+  test('errors are short JSON with no stack traces', async () => {
+    const bad = await req('POST', '/api/agents', { headers: app(), body: '{"name": broken' });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(bad.json, { error: 'Bad request' });
+    const big = await req('POST', '/api/agents', { headers: app(), body: JSON.stringify({ name: 'x', systemPrompt: 'x'.repeat(3 * 1024 * 1024) }) });
+    assert.equal(big.status, 413);
+    assert.doesNotMatch(big.body, /at .*\.js/);
+    const missing = await req('GET', '/api/nope');
+    assert.equal(missing.status, 404);
+    assert.deepEqual(missing.json, { error: 'Not found' });
   });
 });
 
@@ -172,6 +209,11 @@ describe('agent input validation', () => {
     assert.equal(r.json.isAdmin, undefined);
   });
 
+  test('system prompts are capped so the CLI command line fits (pentest LOW-2)', async () => {
+    const a = await create({ name: 'long', systemPrompt: 'x'.repeat(1_000_000) });
+    assert.equal(a.systemPrompt.length, 20000);
+  });
+
   test('updating an agent cannot change its id', async () => {
     const a = await create({ name: 'orig' });
     const r = await req('PUT', `/api/agents/${a.id}`, { headers: app(), body: { id: 'hijacked', name: 'renamed' } });
@@ -184,7 +226,11 @@ describe('runs API', () => {
   test('rejects empty prompts and unknown IDs', async () => {
     const agents = (await req('GET', '/api/agents')).json;
     assert.equal((await req('POST', `/api/agents/${agents[0].id}/runs`, { headers: app(), body: { prompt: '   ' } })).status, 400);
-    assert.ok((await req('POST', '/api/agents/nope/runs', { headers: app(), body: { prompt: 'hi' } })).status >= 400);
+    const noAgent = await req('POST', '/api/agents/nope/runs', { headers: app(), body: { prompt: 'hi' } });
+    assert.equal(noAgent.status, 404);
+    assert.equal(noAgent.json.error, 'Agent not found');
+    const noRun = await req('POST', '/api/runs/nope/messages', { headers: app(), body: { prompt: 'hi' } });
+    assert.equal(noRun.status, 404);
     assert.equal((await req('GET', '/api/runs/nope')).status, 404);
     assert.equal((await req('GET', '/api/runs/nope/events')).status, 404);
   });
@@ -202,6 +248,26 @@ describe('Claude Code log parser', () => {
     assert.equal(session.usage.cacheWrite1h, 50);
     assert.equal(session.tools.Read, 1);
     assert.ok(session.cost > 0);
+  });
+
+  test('a hostile transcript cannot crash or corrupt the monitor (pentest LOW-1)', async () => {
+    const summary = await req('GET', '/api/claude-code/summary?refresh=1');
+    assert.equal(summary.status, 200);
+    const s = summary.json.sessions.find((x) => x.id === EVIL);
+    assert.ok(s, 'evil session still parsed');
+    assert.equal(typeof s.usage.output, 'number');
+    assert.equal(s.usage.output, 0, 'string token counts are ignored');
+    assert.equal(s.usage.input, 0, 'negative token counts are ignored');
+    assert.equal(Object.getPrototypeOf(s.tools), Object.prototype);
+    for (const v of Object.values(s.tools)) assert.equal(typeof v, 'number');
+    assert.ok(summary.json.sessions.every((x) => typeof x.id === 'string'));
+
+    const detail = await req('GET', `/api/claude-code/sessions/${EVIL}`);
+    assert.equal(detail.status, 200);
+    for (const e of detail.json.events) {
+      for (const k of ['text', 'name', 'detail']) if (k in e) assert.equal(typeof e[k], 'string', `${e.kind}.${k}`);
+      assert.ok(e.ts === null || typeof e.ts === 'string');
+    }
   });
 
   test('session detail ignores path tricks', async () => {

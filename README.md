@@ -189,9 +189,10 @@ Put these in the `.env` file:
 ## Security
 
 - **Your Claude login stays with the Claude Code CLI.** Alfred never sees or stores your Claude credentials; it starts the `claude` program, which uses whatever account you signed it in with. Each person who installs Alfred signs in with their own account.
-- **Local only.** Alfred's server listens on `127.0.0.1`, so other devices on your network can't reach it. It also rejects requests addressed to any other host name or sent from other websites, which blocks DNS-rebinding and cross-site attacks from pages open in your browser.
+- **Local only.** Alfred's server listens on `127.0.0.1`, so other devices on your network can't reach it. It also rejects requests addressed to any other host name or sent from other websites, which blocks DNS-rebinding and cross-site attacks from pages open in your browser, and stops websites from detecting that Alfred is running.
+- **Tested.** `npm test` checks these defences, and the app has been through an adversarial test. The findings and fixes are in the release notes.
 - **Tools are opt-in and pre-approved.** An agent can only use the tools you turn on, and it uses them without asking. Don't give one agent both **web access** and **shell or file-edit access**: text on a web page could try to steer it into running commands.
-- **Agents don't inherit extra powers.** Agent runs ignore MCP servers from your Claude Code config, and ignore any Claude Code settings or hooks inside the agent's working folder, so pointing an agent at a downloaded project can't make it run that project's hooks.
+- **Agents don't inherit extra powers.** Agent runs ignore MCP servers from your Claude Code config, and ignore any Claude Code settings or hooks inside the agent's working folder, so pointing an agent at a downloaded project can't make it run that project's hooks. A `CLAUDE.md` in the working folder is still read as instructions, as Claude Code always does. It can't unlock tools you didn't turn on, but it can steer how an agent uses the ones it has, so check `CLAUDE.md` files in folders you didn't write.
 - **Hardened desktop app.** The window runs sandboxed with no Node.js access, denies camera/microphone/location requests, and only opens `http(s)` links in your browser. The executable has Electron's "run as Node" and debugging switches turned off and checks its own app files for tampering.
 - **API keys** (optional) stay in your local `.env` file and are only sent to Anthropic.
 

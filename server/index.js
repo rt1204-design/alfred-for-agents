@@ -25,25 +25,29 @@ const originHostname = (origin) => {
 app.use((req, res, next) => {
   // A rebinding attack arrives with the attacker's domain in the Host header.
   if (!LOCAL_HOSTS.has(hostnameOf(req.headers.host))) return res.status(403).json({ error: 'Forbidden host' });
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    // Requests from another website carry that site's Origin ("null" from sandboxed pages).
-    const origin = req.headers.origin;
-    if (origin !== undefined && !LOCAL_HOSTS.has(originHostname(origin))) {
-      return res.status(403).json({ error: 'Forbidden origin' });
-    }
-    // A custom header can't be sent cross-site without a CORS preflight, which this server never grants.
-    if (req.headers['x-alfred'] !== '1') return res.status(403).json({ error: 'Missing X-Alfred header' });
+  // Requests from another website carry that site's Origin ("null" from sandboxed pages)...
+  const origin = req.headers.origin;
+  if (origin !== undefined && !LOCAL_HOSTS.has(originHostname(origin))) {
+    return res.status(403).json({ error: 'Forbidden origin' });
+  }
+  // ...and modern browsers label them with Sec-Fetch-Site, even no-cors ones like <img>
+  // or <script> tags, which would otherwise let a page detect that Alfred is running.
+  const site = req.headers['sec-fetch-site'];
+  if (site === 'cross-site' || site === 'same-site') return res.status(403).json({ error: 'Forbidden site' });
+  // A custom header can't be sent cross-site without a CORS preflight, which this server never grants.
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.headers['x-alfred'] !== '1') {
+    return res.status(403).json({ error: 'Missing X-Alfred header' });
   }
   next();
 });
 
-// Browser-side defences for the pages this server sends. Google Fonts is the
-// only outside origin allowed (for web fonts); everything else is same-origin.
+// Browser-side defences for the pages this server sends. Everything, fonts
+// included, is bundled with the app, so nothing outside this origin is allowed.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
   "img-src 'self' data:",
   "connect-src 'self'",
   "object-src 'none'",
@@ -65,8 +69,14 @@ app.use((_req, res, next) => {
 
 app.use(express.json({ limit: '2mb' }));
 
+// Expected errors (UserError) carry a status and a message meant for the user;
+// anything else is logged here and answered with a generic message.
 const wrap = (fn) => (req, res) =>
-  Promise.resolve(fn(req, res)).catch((err) => res.status(500).json({ error: err.message }));
+  Promise.resolve(fn(req, res)).catch((err) => {
+    if (err instanceof store.UserError) return res.status(err.status).json({ error: err.message });
+    console.error(`${req.method} ${req.path} failed:`, err);
+    res.status(500).json({ error: 'Something went wrong on Alfred’s side. Details are in the server log.' });
+  });
 
 app.get('/api/health', wrap(async (req, res) => {
   const cli = await cliStatus({ force: req.query.refresh === '1' });
@@ -144,6 +154,14 @@ export async function startServer({ port = Number(process.env.PORT) || 3001, dis
     app.use(express.static(distDir));
     app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
   }
+  // Last: unknown API routes and errors (malformed JSON, oversized bodies) get a short
+  // JSON answer instead of Express's default page, which includes a stack trace.
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+  app.use((err, req, res, _next) => {
+    const status = err.status || err.statusCode || 500;
+    if (status >= 500) console.error(`${req.method} ${req.path} failed:`, err);
+    res.status(status).json({ error: status === 413 ? 'Request too large' : status < 500 ? 'Bad request' : 'Something went wrong' });
+  });
   await store.loadStore();
   return new Promise((resolve, reject) => {
     const server = app.listen(port, '127.0.0.1', () => resolve(server.address().port));

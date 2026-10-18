@@ -35,13 +35,25 @@ function localDay(ts) {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// Log files are untrusted input: coerce every field before using it.
+const str = (v, max = 100000) => (typeof v === 'string' ? v.slice(0, max) : '');
+// Only well-formed ISO timestamps; anything else would break sorting and date math.
+const isoTime = (v) => (typeof v === 'string' && v.length <= 40 && !Number.isNaN(Date.parse(v)) ? v : null);
+// Content blocks as an array of objects, whatever the log contains.
+const blocks = (content) => (Array.isArray(content) ? content.filter((b) => b && typeof b === 'object') : []);
+// Tool names become object keys; keep them away from Object.prototype names.
+const toolKey = (v) => {
+  const name = str(v, 100) || 'unknown';
+  return name === '__proto__' || name === 'constructor' || name === 'prototype' || name in Object.prototype ? `${name}_` : name;
+};
+
 function textOf(content) {
   let t;
   if (typeof content === 'string') t = content;
   else if (Array.isArray(content)) {
-    t = content
-      .filter((b) => b && b.type === 'text')
-      .map((b) => b.text)
+    t = blocks(content)
+      .filter((b) => b.type === 'text')
+      .map((b) => str(b.text))
       .join('\n');
   } else return '';
   // Drop harness-injected context so only what the person typed remains.
@@ -51,14 +63,15 @@ function textOf(content) {
 function isHumanPrompt(o) {
   if (o.type !== 'user' || o.isMeta || !o.message) return false;
   const c = o.message.content;
-  if (Array.isArray(c) && c.some((b) => b?.type === 'tool_result')) return false;
+  if (blocks(c).some((b) => b.type === 'tool_result')) return false;
   const t = textOf(c).trim();
   if (!t || t.startsWith('<command-') || t.startsWith('<local-command')) return false;
-  if (o.origin && o.origin.kind && o.origin.kind !== 'human') return false;
+  if (o.origin && typeof o.origin === 'object' && o.origin.kind && o.origin.kind !== 'human') return false;
   return true;
 }
 
-function summarizeToolInput(name, input = {}) {
+function summarizeToolInput(name, input) {
+  if (!input || typeof input !== 'object') return '';
   const v =
     input.command ?? input.file_path ?? input.path ?? input.pattern ?? input.url ??
     input.query ?? input.description ?? input.prompt ?? input.skill;
@@ -105,18 +118,19 @@ async function parseFile(file) {
     } catch {
       continue;
     }
-    const sid = o.sessionId;
+    if (!o || typeof o !== 'object') continue;
+    const sid = str(o.sessionId, 100);
     if (!sid) continue;
     const s = get(sid);
     s.files.add(file);
     if (o.type === 'custom-title' || o.type === 'ai-title' || o.type === 'summary') {
-      s.title = o.customTitle || o.aiTitle || o.title || o.summary || s.title;
+      s.title = str(o.customTitle || o.aiTitle || o.title || o.summary, 300) || s.title;
     }
-    if (o.cwd && !s.cwd) s.cwd = o.cwd;
-    if (o.gitBranch && !s.gitBranch) s.gitBranch = o.gitBranch;
-    if (o.entrypoint && !s.entrypoint) s.entrypoint = o.entrypoint;
-    if (o.version) s.version = o.version;
-    const ts = o.timestamp;
+    if (!s.cwd) s.cwd = str(o.cwd, 1000) || null;
+    if (!s.gitBranch) s.gitBranch = str(o.gitBranch, 200) || null;
+    if (!s.entrypoint) s.entrypoint = str(o.entrypoint, 100) || null;
+    if (o.version) s.version = str(o.version, 50) || s.version;
+    const ts = isoTime(o.timestamp);
     if (ts && (o.type === 'user' || o.type === 'assistant')) {
       if (!s.start || ts < s.start) s.start = ts;
       if (!s.end || ts > s.end) s.end = ts;
@@ -137,15 +151,16 @@ async function parseFile(file) {
       if (m.model === '<synthetic>') continue;
       // A single API message is logged as one line per content block, each
       // repeating the same usage; keep one usage per message id.
-      if (m.id && m.usage) {
-        s.msgUsage.set(m.id, { model: m.model, usage: normalizeUsage(m.usage), day });
+      if (str(m.id, 200) && m.usage && typeof m.usage === 'object') {
+        s.msgUsage.set(m.id, { model: str(m.model, 100), usage: normalizeUsage(m.usage), day });
       }
-      for (const b of m.content || []) {
-        if (b?.type === 'tool_use' || b?.type === 'server_tool_use') {
-          s.tools[b.name] = (s.tools[b.name] || 0) + 1;
+      for (const b of blocks(m.content)) {
+        if (b.type === 'tool_use' || b.type === 'server_tool_use') {
+          const name = toolKey(b.name);
+          s.tools[name] = (s.tools[name] || 0) + 1;
           if (day) {
             const d = (s.daily[day] ??= { prompts: 0, tools: {} });
-            d.tools[b.name] = (d.tools[b.name] || 0) + 1;
+            d.tools[name] = (d.tools[name] || 0) + 1;
           }
         }
       }
@@ -289,23 +304,24 @@ export async function getSessionDetail(id) {
       } catch {
         continue;
       }
-      if (o.sessionId !== id) continue;
-      const base = { ts: o.timestamp, sidechain: !!o.isSidechain, agentId: o.agentId };
+      if (!o || typeof o !== 'object' || o.sessionId !== id) continue;
+      // Every field the UI renders is forced to a string: logs are untrusted input.
+      const base = { ts: isoTime(o.timestamp), sidechain: !!o.isSidechain, agentId: str(o.agentId, 100) || undefined };
       if (isHumanPrompt(o)) {
         events.push({ ...base, kind: 'prompt', text: textOf(o.message.content) });
-      } else if (o.type === 'user' && Array.isArray(o.message?.content)) {
-        for (const b of o.message.content) {
-          if (b?.type === 'tool_result' && b.is_error) {
+      } else if (o.type === 'user' && o.message) {
+        for (const b of blocks(o.message.content)) {
+          if (b.type === 'tool_result' && b.is_error) {
             const t = typeof b.content === 'string' ? b.content : textOf(b.content);
             events.push({ ...base, kind: 'tool_error', text: t.slice(0, 400) });
           }
         }
       } else if (o.type === 'assistant' && o.message) {
-        for (const b of o.message.content || []) {
-          if (b?.type === 'text' && b.text?.trim()) {
+        for (const b of blocks(o.message.content)) {
+          if (b.type === 'text' && str(b.text).trim()) {
             events.push({ ...base, kind: 'text', text: b.text });
-          } else if (b?.type === 'tool_use' || b?.type === 'server_tool_use') {
-            events.push({ ...base, kind: 'tool', name: b.name, detail: summarizeToolInput(b.name, b.input) });
+          } else if (b.type === 'tool_use' || b.type === 'server_tool_use') {
+            events.push({ ...base, kind: 'tool', name: str(b.name, 100) || 'tool', detail: summarizeToolInput(b.name, b.input) });
           }
         }
       }

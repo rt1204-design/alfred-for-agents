@@ -36,16 +36,20 @@ export function emptyUsage() {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
 }
 
+// Token counts are only trusted as finite, non-negative numbers (logs can be malformed).
+const count = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+
 // Normalize an API `usage` object into our flat shape.
-export function normalizeUsage(u = {}) {
-  const cc = u.cache_creation || {};
-  let w5 = cc.ephemeral_5m_input_tokens ?? 0;
-  let w1 = cc.ephemeral_1h_input_tokens ?? 0;
-  if (!u.cache_creation && u.cache_creation_input_tokens) w5 = u.cache_creation_input_tokens;
+export function normalizeUsage(u) {
+  if (!u || typeof u !== 'object') u = {};
+  const cc = u.cache_creation && typeof u.cache_creation === 'object' ? u.cache_creation : null;
+  let w5 = count(cc?.ephemeral_5m_input_tokens);
+  const w1 = count(cc?.ephemeral_1h_input_tokens);
+  if (!cc) w5 = count(u.cache_creation_input_tokens);
   return {
-    input: u.input_tokens ?? 0,
-    output: u.output_tokens ?? 0,
-    cacheRead: u.cache_read_input_tokens ?? 0,
+    input: count(u.input_tokens),
+    output: count(u.output_tokens),
+    cacheRead: count(u.cache_read_input_tokens),
     cacheWrite5m: w5,
     cacheWrite1h: w1,
   };
