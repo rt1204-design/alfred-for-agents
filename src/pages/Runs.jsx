@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Markdown from '../components/Markdown.jsx';
-import { AgentAvatar, Empty, Icon, Loading, Status } from '../components/ui.jsx';
+import { AgentAvatar, Empty, EntryRow, Icon, Loading, Status } from '../components/ui.jsx';
 import { fmtAgo, fmtCost, fmtDate, fmtTokens, fmtWhen, totalTokens } from '../format.js';
 
-export default function Runs({ runs, loadRuns, runId, agents }) {
+// Clear runs (they move to History) and offer an Undo.
+export async function clearRuns(ids, { loadRuns, notify }) {
+  const { cleared, skipped } = await api.clearRuns(ids);
+  await loadRuns();
+  const what = `${cleared} run${cleared === 1 ? '' : 's'}`;
+  notify(
+    `Cleared ${what}${skipped ? ` (${skipped} still running)` : ''}. ${cleared ? 'Find it in History.' : ''}`.trim(),
+    cleared ? async () => { await api.restoreRuns(ids); await loadRuns(); } : undefined,
+  );
+}
+
+export default function Runs({ runs, loadRuns, runId, agents, notify }) {
   // Refresh the list while anything is running so statuses stay current.
   const anyRunning = runs.some((r) => r.status === 'running');
   useEffect(() => {
@@ -18,9 +29,15 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
     return (
       <>
         <a href="#/runs" className="back-link"><Icon name="back" /> All runs</a>
-        <RunView key={runId} id={runId} agents={agents} onChange={loadRuns} />
+        <RunView key={runId} id={runId} agents={agents} onChange={loadRuns} notify={notify} />
       </>
     );
+  }
+
+  const finished = runs.filter((r) => r.status !== 'running');
+  async function clearFinished() {
+    if (!confirm(`Clear ${finished.length} finished run${finished.length === 1 ? '' : 's'}? They move to History, where you can restore them.`)) return;
+    await clearRuns(finished.map((r) => r.id), { loadRuns, notify });
   }
 
   return (
@@ -31,6 +48,9 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
           <p>Every task you’ve given an agent. Open one to follow it live.</p>
         </div>
         <div className="spacer" />
+        {finished.length > 0 && (
+          <button className="btn ghost" onClick={clearFinished}><Icon name="clear" /> Clear finished</button>
+        )}
         <a className="btn primary" href="#/agents"><Icon name="plus" /> New run</a>
       </div>
       {runs.length === 0 ? (
@@ -41,20 +61,30 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
       ) : (
         <ul className="entries">
           {runs.map((r) => (
-            <li key={r.id}>
-              <a className="entry with-avatar" href={`#/runs/${r.id}`}>
-                <div className="entry-when" title={fmtDate(r.createdAt)}>{fmtWhen(r.createdAt)}</div>
-                <AgentAvatar agent={r} agents={agents} size="sm" />
-                <div>
-                  <div className="cell-title clamp">{r.preview}</div>
-                  <div className="cell-sub">{r.agentName} · {fmtAgo(r.createdAt)}</div>
-                </div>
-                <div className="entry-figs">
-                  <Status status={r.status} />
-                  <div className="cell-sub">{fmtCost(r.cost)} · {fmtTokens(totalTokens(r.usage))} tok</div>
-                </div>
-              </a>
-            </li>
+            <EntryRow
+              key={r.id}
+              href={`#/runs/${r.id}`}
+              action={
+                <button
+                  className="btn sm ghost row-action" disabled={r.status === 'running'}
+                  onClick={() => clearRuns([r.id], { loadRuns, notify })}
+                  aria-label="Clear run" title={r.status === 'running' ? 'Running runs can’t be cleared' : 'Clear (moves to History)'}
+                >
+                  <Icon name="clear" />
+                </button>
+              }
+            >
+              <div className="entry-when" title={fmtDate(r.createdAt)}>{fmtWhen(r.createdAt)}</div>
+              <AgentAvatar agent={r} agents={agents} size="sm" />
+              <div>
+                <div className="cell-title clamp">{r.preview}</div>
+                <div className="cell-sub">{r.agentName} · {fmtAgo(r.createdAt)}</div>
+              </div>
+              <div className="entry-figs">
+                <Status status={r.status} />
+                <div className="cell-sub">{fmtCost(r.cost)} · {fmtTokens(totalTokens(r.usage))} tok</div>
+              </div>
+            </EntryRow>
           ))}
         </ul>
       )}
@@ -62,7 +92,7 @@ export default function Runs({ runs, loadRuns, runId, agents }) {
   );
 }
 
-function RunView({ id, agents, onChange }) {
+function RunView({ id, agents, onChange, notify }) {
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
   const [reply, setReply] = useState('');
@@ -119,11 +149,24 @@ function RunView({ id, agents, onChange }) {
     }
   }
 
-  async function remove() {
-    if (!confirm('Delete this run?')) return;
-    await api.deleteRun(id);
-    onChange();
+  async function clear() {
+    await clearRuns([id], { loadRuns: onChange, notify });
     window.location.hash = '#/runs';
+  }
+
+  async function restore() {
+    await api.restoreRuns([id]);
+    setRun({ ...run, clearedAt: undefined });
+    onChange();
+    notify('Run restored to Runs.');
+  }
+
+  async function deleteForever() {
+    if (!confirm('Delete this run for good? This can’t be undone.')) return;
+    await api.deleteRuns([id]);
+    await onChange();
+    notify('Run deleted.');
+    window.location.hash = '#/history';
   }
 
   if (!run) return error ? <Empty title={error} /> : <Loading />;
@@ -169,10 +212,18 @@ function RunView({ id, agents, onChange }) {
         </div>
         {running ? (
           <button className="btn sm danger" onClick={() => api.stopRun(id)}><Icon name="stop" /> Stop</button>
-        ) : (
-          <button className="btn sm ghost danger" onClick={remove} aria-label="Delete run" title="Delete run"><Icon name="trash" /></button>
+        ) : !run.clearedAt && (
+          <button className="btn sm ghost" onClick={clear} title="Clear (moves to History)"><Icon name="clear" /> Clear</button>
         )}
       </div>
+
+      {run.clearedAt && (
+        <div className="alert cleared-banner">
+          <div style={{ flex: 1 }}>Cleared {fmtAgo(run.clearedAt)}. It’s only in History.</div>
+          <button className="btn sm" onClick={restore}><Icon name="undo" /> Restore</button>
+          <button className="btn sm ghost danger" onClick={deleteForever}><Icon name="trash" /> Delete forever</button>
+        </div>
+      )}
 
       <div className="conv" onWheel={(e) => { stick.current = e.deltaY > 0; }}>
         {turns.map((t, i) => (

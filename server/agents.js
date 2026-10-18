@@ -165,24 +165,69 @@ export async function deleteAgent(id) {
 
 // ---- Runs ----
 
-export const listRuns = () =>
+// Runs you clear stay on disk with a clearedAt time and show up in History
+// instead of the Runs list, until you restore them or delete them for good.
+export const listRuns = ({ cleared = false } = {}) =>
   runs
+    .filter((r) => !!r.clearedAt === cleared)
     .map(({ messages, live: _l, ...rest }) => ({
       ...rest,
       preview: firstUserText(messages),
       turns: messages.filter((m) => m.role === 'user' && typeof m.content === 'string').length,
     }))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => (cleared ? b.clearedAt.localeCompare(a.clearedAt) : b.createdAt.localeCompare(a.createdAt)));
+
+// Validate a list of IDs sent by the UI.
+export function idList(ids) {
+  if (!Array.isArray(ids) || ids.length > 5000 || !ids.every((id) => typeof id === 'string' && id.length <= 200)) {
+    throw new UserError(400, 'Expected a list of IDs');
+  }
+  return new Set(ids);
+}
+
+// Clear (hide) runs. Runs still in progress are skipped.
+export async function clearRuns(ids) {
+  const want = idList(ids);
+  const now = new Date().toISOString();
+  let cleared = 0;
+  let skipped = 0;
+  for (const r of runs) {
+    if (!want.has(r.id) || r.clearedAt) continue;
+    if (live.has(r.id)) {
+      skipped++;
+      continue;
+    }
+    r.clearedAt = now;
+    cleared++;
+  }
+  if (cleared) await saveRuns();
+  return { cleared, skipped };
+}
+
+export async function restoreRuns(ids) {
+  const want = idList(ids);
+  let restored = 0;
+  for (const r of runs) {
+    if (want.has(r.id) && r.clearedAt) {
+      delete r.clearedAt;
+      restored++;
+    }
+  }
+  if (restored) await saveRuns();
+  return { restored };
+}
+
+// Delete runs for good. Only cleared runs, so nothing disappears without first going to History.
+export async function deleteRuns(ids) {
+  const want = idList(ids);
+  const before = runs.length;
+  runs = runs.filter((r) => !(want.has(r.id) && r.clearedAt && !live.has(r.id)));
+  const deleted = before - runs.length;
+  if (deleted) await saveRuns();
+  return { deleted };
+}
 
 export const getRun = (id) => runs.find((r) => r.id === id);
-
-export async function deleteRun(id) {
-  live.get(id)?.abort();
-  const before = runs.length;
-  runs = runs.filter((r) => r.id !== id);
-  if (runs.length !== before) await saveRuns();
-  return runs.length !== before;
-}
 
 function firstUserText(messages) {
   const m = messages.find((x) => x.role === 'user');

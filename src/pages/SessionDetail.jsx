@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { Empty, HBars, Icon, Loading, Stat } from '../components/ui.jsx';
-import { fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens, toolLabel } from '../format.js';
+import { fmtAgo, fmtCost, fmtDate, fmtDuration, fmtNum, fmtTokens, toolLabel } from '../format.js';
+import { clearSessions } from './Sessions.jsx';
 
-export default function SessionDetail({ id }) {
+export default function SessionDetail({ id, loadSummary, notify }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [showText, setShowText] = useState(true);
@@ -20,15 +21,40 @@ export default function SessionDetail({ id }) {
   );
 
   const s = data?.session;
+  const cleared = data?.cleared;
+  const title = s?.title || s?.firstPrompt || cleared?.title || cleared?.firstPrompt || 'Session';
+
+  async function clear() {
+    await clearSessions([id], { loadSummary, notify });
+    window.location.hash = '#/sessions';
+  }
+
+  async function restore() {
+    await api.restoreSessions([id]);
+    await loadSummary();
+    setData(await api.session(id));
+    notify('Session restored to Claude Code.');
+  }
+
   return (
     <>
       <div className="page-head">
         <div style={{ minWidth: 0 }}>
-          <a href="#/sessions" className="back-link"><Icon name="back" /> All sessions{s?.project ? ` · ${s.project}` : ''}</a>
-          <h1 className="clamp">{s?.title || s?.firstPrompt || 'Session'}</h1>
+          <a href={cleared ? '#/history' : '#/sessions'} className="back-link">
+            <Icon name="back" /> {cleared ? 'History' : 'All sessions'}{s?.project ? ` · ${s.project}` : ''}
+          </a>
+          <h1 className="clamp">{title}</h1>
           <p className="mono" style={{ wordBreak: 'break-all' }}>{s?.cwd ? `${s.cwd} · ` : ''}{id}</p>
         </div>
+        <div className="spacer" />
+        {s && <button className="btn ghost" onClick={clear} title="Clear from Alfred (moves to History)"><Icon name="clear" /> Clear</button>}
       </div>
+      {cleared && (
+        <div className="alert cleared-banner">
+          <div style={{ flex: 1 }}>Cleared from Alfred {fmtAgo(cleared.clearedAt)}. Its numbers are left out of the Overview until you restore it.</div>
+          <button className="btn sm" onClick={restore}><Icon name="undo" /> Restore</button>
+        </div>
+      )}
       {error && <div className="alert error">{error}</div>}
       {!data ? (
         !error && <Loading>Loading the session…</Loading>

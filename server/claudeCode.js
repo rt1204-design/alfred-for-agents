@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { clearedAt } from './hidden.js';
 import { addUsage, costOf, emptyUsage, normalizeUsage, totalTokens } from './pricing.js';
 
 export const PROJECTS_DIR =
@@ -228,8 +229,25 @@ export async function getSummary({ force = false } = {}) {
 
   const daily = {};
   const sessions = [];
+  // Sessions cleared from Alfred are left out of the lists and every total,
+  // and listed separately for the History page.
+  const cleared = [];
   for (const s of merged.values()) {
     if (!s.start) continue; // no real messages
+    const hiddenAt = clearedAt(s.id);
+    if (hiddenAt) {
+      cleared.push({
+        id: s.id,
+        title: s.title,
+        firstPrompt: s.firstPrompt,
+        project: s.cwd ? path.basename(s.cwd) : s.project,
+        start: s.start,
+        end: s.end,
+        prompts: s.prompts,
+        clearedAt: hiddenAt,
+      });
+      continue;
+    }
     const usage = emptyUsage();
     let cost = 0;
     const models = {};
@@ -278,7 +296,8 @@ export async function getSummary({ force = false } = {}) {
   const days = Object.values(daily).sort((a, b) => a.date.localeCompare(b.date));
   for (const d of days) d.totalTokens = totalTokens(d.usage);
 
-  lastSummary = { projectsDir: PROJECTS_DIR, generatedAt: new Date().toISOString(), sessions, daily: days };
+  cleared.sort((a, b) => b.clearedAt.localeCompare(a.clearedAt));
+  lastSummary = { projectsDir: PROJECTS_DIR, generatedAt: new Date().toISOString(), sessions, daily: days, cleared };
   lastSummaryAt = Date.now();
   return lastSummary;
 }
@@ -328,6 +347,9 @@ export async function getSessionDetail(id) {
     }
   }
   events.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
-  const summary = (await getSummary()).sessions.find((s) => s.id === id) || null;
-  return { session: summary, events: events.slice(-3000), truncated: events.length > 3000 };
+  const all = await getSummary();
+  const session = all.sessions.find((s) => s.id === id) || null;
+  // A session cleared from Alfred can still be opened from History.
+  const cleared = session ? null : all.cleared.find((s) => s.id === id) || null;
+  return { session, cleared, events: events.slice(-3000), truncated: events.length > 3000 };
 }

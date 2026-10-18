@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import * as store from './agents.js';
 import { cliStatus } from './claudeCli.js';
 import { getSessionDetail, getSummary } from './claudeCode.js';
+import { clearSessions, restoreSessions } from './hidden.js';
 import { AGENT_MODELS } from './pricing.js';
 
 const app = express();
@@ -90,6 +91,17 @@ app.get('/api/claude-code/summary', wrap(async (req, res) => {
 app.get('/api/claude-code/sessions/:id', wrap(async (req, res) => {
   res.json(await getSessionDetail(req.params.id));
 }));
+// Clearing hides sessions in Alfred only; Claude Code's log files are untouched.
+app.post('/api/claude-code/sessions/clear', wrap(async (req, res) => {
+  const cleared = clearSessions(store.idList(req.body?.ids));
+  await getSummary({ force: true });
+  res.json({ cleared });
+}));
+app.post('/api/claude-code/sessions/restore', wrap(async (req, res) => {
+  const restored = restoreSessions(store.idList(req.body?.ids));
+  await getSummary({ force: true });
+  res.json({ restored });
+}));
 
 // ---- Agents ----
 app.get('/api/agents', (_req, res) => res.json(store.listAgents()));
@@ -103,7 +115,11 @@ app.delete('/api/agents/:id', wrap(async (req, res) => {
 }));
 
 // ---- Runs ----
-app.get('/api/runs', (_req, res) => res.json(store.listRuns()));
+app.get('/api/runs', (req, res) => res.json(store.listRuns({ cleared: req.query.cleared === '1' })));
+// Clear moves runs to History; restore brings them back; delete removes cleared runs for good.
+app.post('/api/runs/clear', wrap(async (req, res) => res.json(await store.clearRuns(req.body?.ids))));
+app.post('/api/runs/restore', wrap(async (req, res) => res.json(await store.restoreRuns(req.body?.ids))));
+app.post('/api/runs/delete', wrap(async (req, res) => res.json(await store.deleteRuns(req.body?.ids))));
 app.post('/api/agents/:id/runs', wrap(async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim();
   if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
@@ -126,7 +142,11 @@ app.post('/api/runs/:id/retry', wrap(async (req, res) => {
 }));
 app.post('/api/runs/:id/stop', (req, res) => res.json({ stopped: store.stopRun(req.params.id) }));
 app.delete('/api/runs/:id', wrap(async (req, res) => {
-  (await store.deleteRun(req.params.id)) ? res.status(204).end() : res.status(404).json({ error: 'Not found' });
+  const run = store.getRun(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Not found' });
+  if (!run.clearedAt) return res.status(409).json({ error: 'Clear the run first; it can be deleted from History.' });
+  await store.deleteRuns([run.id]);
+  res.status(204).end();
 }));
 
 // Live run updates over Server-Sent Events.
