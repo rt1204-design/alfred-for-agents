@@ -42,7 +42,7 @@ Everything stays on your computer. Alfred has no account, server or telemetry of
 Save reusable agents with their own model (Opus, Sonnet, Haiku or Fable), system prompt, effort level and tools. Three starter agents are included: **Researcher**, **Code reviewer** and **Quick helper**.
 
 ### 🔴 Live runs
-Watch a run stream in real time: thinking, tool calls with their results, and the answer with clickable sources. Stop a run, retry it, or keep the conversation going.
+Watch a run stream in real time: thinking, tool calls (grouped, with any failures counted) and the answer with clickable sources. Stop a run, retry it, or keep the conversation going.
 
 </td>
 <td width="50%" valign="top">
@@ -54,7 +54,7 @@ Cost, tokens, prompts and tool calls per day for the last 7, 30 or 90 days. See 
 Alfred gets its own window and a tray icon. When an agent finishes in the background, you get a Windows notification. Alfred can also start with Windows.
 
 ### 🎩 A butler, not a dashboard
-A calm, single-column design built around the hand-drawn Alfred illustration: Caslon headings, a robot portrait for each agent, an overseer agent shown first, and Day and Evening themes.
+A calm, single-column design: clean geometric robot portraits for your agents, a team diagram with your overseer on top, tool calls folded into one tidy row, and Day and Evening themes.
 
 </td>
 </tr>
@@ -209,7 +209,8 @@ alfred-for-agents/
 │   ├── claudeCli.js       Finds the Claude Code CLI and checks sign-in
 │   ├── claudeCode.js      Parses Claude Code session logs
 │   └── pricing.js         Per-model prices for cost estimates
-├── src/                   React UI (Vite)
+├── src/                   React UI (Vite); agent portraits in src/components/Robot.jsx
+├── tests/                 Backend tests (`npm test`)
 ├── assets/alfred.png      The Alfred illustration
 ├── public/art/            Line-art pieces cut from the illustration
 ├── build/                 App and tray icons (made by `npm run icon`)
