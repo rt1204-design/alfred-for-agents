@@ -42,7 +42,7 @@ Everything stays on your computer. Alfred has no account, server or telemetry of
 Save reusable agents with their own model (Opus, Sonnet, Haiku or Fable), system prompt, effort level and tools. Three starter agents are included: **Researcher**, **Code reviewer** and **Quick helper**.
 
 ### 🔴 Live runs
-Watch a run stream in real time: thinking, tool calls (grouped, with any failures counted) and the answer with clickable sources. Stop a run, retry it, or keep the conversation going.
+Watch a run stream in real time: thinking, tool calls (grouped, with any failures counted) and the answer with clickable sources. Stop a run, retry it, or keep the conversation going. Clear old runs and sessions to tidy up, and bring them back from **History**.
 
 </td>
 <td width="50%" valign="top">
@@ -149,6 +149,13 @@ Click **New agent** and set:
 - **Notifications** pop up when a run finishes while Alfred isn't in front. Click one to jump to that run.
 - **Start with Windows** and **Open data folder** are in the tray menu.
 
+### Clearing runs and sessions
+
+- **Clear** hides a run or a Claude Code session from Alfred. Use the button on each row, **Clear finished** on the Runs page, or **Clear all** on the Claude Code page.
+- Nothing is deleted. Cleared items wait on the **History** page, where you can restore them. Claude Code's own session logs are never changed.
+- Cleared sessions are left out of the Overview totals until you restore them.
+- To remove a run for good, clear it first, then use **Delete forever** in History.
+
 ## How it works
 
 ```mermaid
@@ -208,6 +215,7 @@ alfred-for-agents/
 │   ├── agents.js          Agents, runs, and the CLI and API runners
 │   ├── claudeCli.js       Finds the Claude Code CLI and checks sign-in
 │   ├── claudeCode.js      Parses Claude Code session logs
+│   ├── hidden.js          Remembers which sessions you cleared
 │   └── pricing.js         Per-model prices for cost estimates
 ├── src/                   React UI (Vite); agent portraits in src/components/Robot.jsx
 ├── tests/                 Backend tests (`npm test`)

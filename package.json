@@ -4,7 +4,7 @@
   "description": "Monitor Claude Code and run Claude agents on your subscription.",
   "author": "Alfred for Agents",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
